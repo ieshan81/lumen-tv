@@ -1,0 +1,116 @@
+/* 10-foot frame for the existing Watch JoJo pages.
+   Active only when tv-shell.js sets html.lumen-tv (via ?lumen=1).
+   Does not replace the embed player. */
+
+html.lumen-tv {
+  --tv-bg: #070709;
+  --tv-fg: #f4f4f5;
+  --tv-muted: #c4c4cc;
+  --tv-accent: #e50914;
+  --tv-focus: #ffffff;
+  --tv-safe: 48px;
+  font-size: 22px;
+}
+
+html.lumen-tv body {
+  background: var(--tv-bg);
+  color: var(--tv-fg);
+  padding: var(--tv-safe);
+  box-sizing: border-box;
+}
+
+html.lumen-tv body.watch-page {
+  padding: 28px 48px 40px;
+}
+
+html.lumen-tv .watch-nav,
+html.lumen-tv .navbar {
+  min-height: 84px;
+}
+
+html.lumen-tv .watch-title,
+html.lumen-tv .logo-text {
+  font-size: 42px;
+  letter-spacing: 0.04em;
+}
+
+html.lumen-tv .player-container {
+  width: 100%;
+  height: min(78vh, 860px);
+  border-radius: 18px;
+  overflow: hidden;
+  background: #000;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.55);
+}
+
+html.lumen-tv .player-container iframe#player {
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+html.lumen-tv .player-shield__title {
+  font-size: 64px;
+  line-height: 1.05;
+}
+
+html.lumen-tv .player-shield__desc,
+html.lumen-tv .player-shield__meta,
+html.lumen-tv .progress-text {
+  font-size: 28px;
+  color: var(--tv-muted);
+}
+
+html.lumen-tv .btn,
+html.lumen-tv .btn-ep-nav,
+html.lumen-tv .btn-play,
+html.lumen-tv .watch-fullscreen-btn,
+html.lumen-tv .source-bar__btns button,
+html.lumen-tv .anime-lang-toggle__btn,
+html.lumen-tv select,
+html.lumen-tv .watch-footer__back {
+  min-height: 64px;
+  min-width: 64px;
+  padding: 14px 28px;
+  font-size: 26px;
+  border-radius: 12px;
+}
+
+html.lumen-tv .watch-controls,
+html.lumen-tv .watch-progress,
+html.lumen-tv .series-panel {
+  margin-top: 22px;
+}
+
+html.lumen-tv .series-panel__heading {
+  font-size: 32px;
+}
+
+html.lumen-tv a:focus,
+html.lumen-tv button:focus,
+html.lumen-tv select:focus,
+html.lumen-tv input:focus,
+html.lumen-tv [tabindex]:focus {
+  outline: 4px solid var(--tv-focus);
+  outline-offset: 4px;
+  box-shadow: 0 0 0 8px rgba(229, 9, 20, 0.55);
+}
+
+html.lumen-tv .tv-focusable:focus-visible {
+  outline: 4px solid var(--tv-focus);
+  outline-offset: 4px;
+}
+
+/* Bedroom: no control that only appears on hover. */
+html.lumen-tv .watch-fullscreen-btn,
+html.lumen-tv .skip-marker-overlay,
+html.lumen-tv .next-ep-overlay,
+html.lumen-tv .player-click-shield {
+  opacity: 1;
+}
+
+html.lumen-tv .episode-list button,
+html.lumen-tv .cast-row button {
+  font-size: 22px;
+  min-height: 72px;
+}

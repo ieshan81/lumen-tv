@@ -1,0 +1,22 @@
+{
+  "name": "lumen-tv",
+  "productName": "Lumen TV",
+  "version": "0.2.0",
+  "description": "TV mode for a laptop + projector: auto-launches a Google TV style home screen when a projector is connected.",
+  "main": "main.js",
+  "private": true,
+  "scripts": {
+    "postinstall": "node node_modules/electron/install.js",
+    "start": "electron .",
+    "dev": "electron . --dev",
+    "check": "node --check main.js && node --check src/browser.js && node --check src/page-context.js && node --check src/site-controls.js && node --check src/tv-shell.js && node --check src/navigation-policy.js && node --check src/display-selection.js && node --check src/displays.js && node --check src/volume.js && node --check src/volume-overlay.js && node --check src/remote.js && node --check remote/haptics.js && node --check remote/remote.js && node --check ui/volume.js && node --check ui/volume-preload.js && node --check ui/app.js",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "@fontsource-variable/outfit": "^5.3.0",
+    "electron": "^44.9.3",
+    "koffi": "^3.3.3",
+    "qrcode": "^1.5.4",
+    "ws": "^8.22.0"
+  }
+}

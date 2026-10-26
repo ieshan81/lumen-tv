@@ -1,0 +1,68 @@
+[
+  {
+    "id": "jojo",
+    "name": "JoJo",
+    "url": "https://watch-jojo.netlify.app/?lumen=1",
+    "accent": "#d946ef",
+    "desc": "Your movies, series, and anime, with Lumen TV navigation.",
+    "tvShell": true,
+    "blockPopups": true,
+    "adblock": true
+  },
+  {
+    "id": "movy",
+    "name": "Movy",
+    "url": "https://www.movy.sx/",
+    "accent": "#f43f5e",
+    "desc": "Browse Movy with TV navigation, phone search, and playback controls.",
+    "tvShell": true,
+    "lockNavigation": true,
+    "allowedNavigationOrigins": ["https://movy.sx"],
+    "blockPopups": true,
+    "adblock": true
+  },
+  {
+    "id": "youtube",
+    "name": "YouTube",
+    "url": "https://www.youtube.com/tv",
+    "accent": "#ff3b3b",
+    "desc": "The big-screen YouTube layout, made for arrow keys. Ads are blocked.",
+    "tvUserAgent": true,
+    "adblock": true
+  },
+  {
+    "id": "netflix",
+    "name": "Netflix",
+    "url": "https://www.netflix.com/browse",
+    "accent": "#e50914",
+    "desc": "Watch in Microsoft Edge with your saved Netflix session."
+  },
+  {
+    "id": "prime",
+    "name": "Prime Video",
+    "url": "https://www.primevideo.com/",
+    "accent": "#1fb6ff",
+    "desc": "Movies and series from Amazon."
+  },
+  {
+    "id": "disney",
+    "name": "Disney+",
+    "url": "https://www.disneyplus.com/",
+    "accent": "#3b6bff",
+    "desc": "Disney, Pixar, Marvel and more."
+  },
+  {
+    "id": "hbo",
+    "name": "HBO Max",
+    "url": "https://www.hbomax.com/",
+    "accent": "#3971ff",
+    "desc": "HBO series, films, and originals. Sign in with your subscription."
+  },
+  {
+    "id": "web",
+    "name": "Web",
+    "url": "https://www.google.com/",
+    "accent": "#34d399",
+    "desc": "A plain browser. Use the phone touchpad to click around."
+  }
+]

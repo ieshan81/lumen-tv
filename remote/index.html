@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+<meta name="theme-color" content="#07080d">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Lumen">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="/manifest.webmanifest?t=__TOKEN__">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="icon" href="/icon.svg">
+<title>Lumen Remote</title>
+<link rel="stylesheet" href="/remote.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand-mark" aria-hidden="true"><span></span></div>
+  <div class="head-copy"><div class="title">lumen <span class="room-label">YOUR ROOM</span></div><div class="status" id="status">Connecting to your room…</div></div>
+  <div class="connection" id="connection"><span class="dot" id="dot"></span><span id="connectionText">Offline</span></div>
+</header>
+
+<main>
+  <section class="tab active" id="tab-control">
+    <article class="power-card" id="powerCard">
+      <div class="eyebrow">BEDROOM TV</div>
+      <h1>Ready when you are.</h1>
+      <p id="powerHint">Turn on the projector, select HDMI, then start Lumen.</p>
+      <div class="device-line">
+        <span class="device-icon"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="11" rx="2.5"/><circle cx="16.5" cy="11.5" r="2.2"/><path d="M8 17v2M16 17v2M6 20h12"/></svg></span>
+        <div><strong id="projectorName">Y9 projector</strong><small id="projectorState">Checking HDMI…</small></div><span class="device-dot" id="projectorDot"></span>
+      </div>
+      <button class="start-button" data-action="enter" id="startButton"><span class="start-icon"><svg viewBox="0 0 24 24"><path d="M8 5.5 18 12 8 18.5z"/></svg></span><span><strong id="startLabel">Start Lumen</strong><small id="startSub">Open the TV home and switch audio</small></span></button>
+      <div class="start-error" id="startError" hidden></div>
+      <ol class="start-steps"><li><span>1</span>Power on the projector with its remote</li><li><span>2</span>Select the HDMI input</li><li><span>3</span>Tap Start Lumen above</li></ol>
+    </article>
+
+    <article class="now-card" id="nowCard" hidden>
+      <div class="now-art" id="nowArt"><span id="nowLetter">L</span></div>
+      <div class="now-copy"><div class="eyebrow" id="nowEyebrow">LUMEN TV</div><strong id="nowTitle">TV Home</strong><span id="nowMeta">Choose something to watch</span><div class="progress" id="progress" hidden><i id="progressFill"></i></div></div>
+      <button class="mini-home" id="home" aria-label="Return to Lumen home"><svg viewBox="0 0 24 24"><path d="M4 11.5 12 4l8 7.5"/><path d="M6 10v9.5h4.5V14h3v5.5H18V10"/></svg></button>
+    </article>
+
+    <div class="remote-controls" id="remoteControls" hidden>
+      <section class="keyboard-context" id="keyboardContext" hidden aria-label="TV keyboard">
+        <div class="keyboard-heading"><div><span class="eyebrow">TEXT FIELD ON TV</span><strong id="fieldLabel">Type on your TV</strong></div><button id="dismissKeyboard" aria-label="Dismiss phone keyboard">×</button></div>
+        <p id="keyboardHint">Tap here to open your phone keyboard.</p>
+        <form id="liveForm"><input id="liveText" aria-label="Text for the focused TV field" placeholder="Tap to type…" autocapitalize="off" autocomplete="off" spellcheck="false"><button id="submitLive" type="submit" aria-label="Press Enter on TV">↵</button></form>
+      </section>
+      <div class="control-caption"><span id="contextLabel">BROWSE YOUR TV</span><span id="controlHint">Arrows to move · OK to open</span></div>
+      <div class="seg" id="padseg" aria-label="Control mode"><button data-pad="auto" class="on">Auto</button><button data-pad="dpad">Navigate</button><button data-pad="touch">Touchpad</button></div>
+      <div class="pad" id="dpad">
+        <button class="key up" data-key="Up" aria-label="Up"><svg viewBox="0 0 24 24"><path d="m6 14 6-6 6 6"/></svg></button>
+        <button class="key left" data-key="Left" aria-label="Left"><svg viewBox="0 0 24 24"><path d="m14 6-6 6 6 6"/></svg></button>
+        <button class="key ok" data-key="Enter" data-repeat="0"><span>OK</span></button>
+        <button class="key right" data-key="Right" aria-label="Right"><svg viewBox="0 0 24 24"><path d="m10 6 6 6-6 6"/></svg></button>
+        <button class="key down" data-key="Down" aria-label="Down"><svg viewBox="0 0 24 24"><path d="m6 10 6 6 6-6"/></svg></button>
+      </div>
+      <div class="touchpad" id="touchpad" hidden><div class="touch-hint"><svg viewBox="0 0 24 24"><path d="M8.5 11V6.5a2 2 0 0 1 4 0V11M12.5 9.5a2 2 0 0 1 4 0V12M16.5 11a2 2 0 0 1 4 0v3.5c0 3.6-2.9 6.5-6.5 6.5h-1.2a6 6 0 0 1-4.9-2.5L4.4 13.7a2 2 0 0 1 3.1-2.5l1 1.1"/></svg><strong>Touch to control</strong><span>Drag · tap · two-finger scroll</span></div></div>
+      <div class="quick-row">
+        <button class="soft-button" data-key="Back"><svg viewBox="0 0 24 24"><path d="M9 7 4 12l5 5M4 12h11"/></svg><span>Back</span></button>
+        <button class="soft-button" id="homeButton"><svg viewBox="0 0 24 24"><path d="M4 11.5 12 4l8 7.5M6 10v9.5h12V10"/></svg><span>Home</span></button>
+        <button class="soft-button" data-media="fullscreen"><svg viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg><span>Full</span></button>
+      </div>
+      <div class="transport" id="transport">
+        <button data-media="back10" aria-label="Back 10 seconds"><svg viewBox="0 0 24 24"><path d="M5.5 12a6.5 6.5 0 1 0 2-4.7M5.5 4.5v3.5H9"/><text x="12" y="14.6">10</text></svg></button>
+        <button class="play" id="playPause" data-media="playpause" aria-label="Play or pause"><svg id="playIcon" viewBox="0 0 24 24"><path d="M8 5.5 18 12 8 18.5z"/></svg><span class="sr-only" id="playLabel">Play or pause</span></button>
+        <button data-media="fwd10" aria-label="Forward 10 seconds"><svg viewBox="0 0 24 24"><path d="M18.5 12a6.5 6.5 0 1 1-2-4.7M18.5 4.5v3.5H15"/><text x="12" y="14.6">10</text></svg></button>
+      </div>
+      <div class="episode-row" id="episodeRow" hidden><button data-site="previousEpisode">Previous episode</button><button data-site="nextEpisode">Next episode</button></div>
+      <div class="player-tools" id="playerTools" hidden aria-label="Player options"><button data-site="showEpisodes">Episodes</button><button data-site="audioSubtitles">Audio &amp; subtitles</button><button data-site="quality">Quality &amp; speed</button><button data-site="skipIntro">Skip intro</button><button data-site="skipRecap">Skip recap</button></div>
+      <div class="volume-row">
+        <button data-media="voldown" data-repeat="1" aria-label="Volume down"><svg viewBox="0 0 24 24"><path d="M4 10v4h3l4 3.5v-11L7 10zM16 12h5"/></svg></button>
+        <button data-media="mute" aria-label="Mute"><svg viewBox="0 0 24 24"><path d="M4 10v4h3l4 3.5v-11L7 10zM16 9.5l5 5M21 9.5l-5 5"/></svg></button>
+        <button data-media="volup" data-repeat="1" aria-label="Volume up"><svg viewBox="0 0 24 24"><path d="M4 10v4h3l4 3.5v-11L7 10zM18.5 9v6M15.5 12h6"/></svg></button>
+      </div>
+      <div class="volume-readout" id="volumeReadout" aria-live="polite" hidden></div>
+      <div class="audio-state" id="audioState"></div>
+      <div class="playback-quality" id="playbackQuality" hidden></div>
+    </div>
+  </section>
+
+  <section class="tab" id="tab-apps">
+    <div class="section-heading"><div><span class="eyebrow">LIBRARY</span><h2>Apps</h2></div><button class="compact" id="resume" hidden>Resume</button></div>
+    <div class="apps" id="apps"></div><button class="danger-button" id="closeapp" hidden>Close current app</button>
+  </section>
+
+  <section class="tab" id="tab-type">
+    <div class="section-heading"><div><span class="eyebrow">PHONE KEYBOARD</span><h2>Type on the TV</h2></div></div>
+    <p class="note">Select a text field on your TV. The Remote tab brings up the matching keyboard automatically. You can also send text from here.</p>
+    <textarea id="text" rows="4" placeholder="Search or type…" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false"></textarea>
+    <div class="row2"><button class="soft-button tall" id="send">Type</button><button class="accent-button" id="sendEnter">Type + Enter</button></div>
+    <div class="keyboard-row"><button data-key="Backspace" data-repeat="1">Delete</button><button data-key="Space" data-repeat="1">Space</button><button data-key="Enter">Enter</button></div>
+  </section>
+
+  <section class="tab" id="tab-more">
+    <div class="section-heading"><div><span class="eyebrow">ROOM</span><h2>TV settings</h2></div></div>
+    <div class="settings-card"><h3>Sleep timer</h3><div class="chips" id="sleep"><button data-min="0">Off</button><button data-min="15">15m</button><button data-min="30">30m</button><button data-min="45">45m</button><button data-min="60">1h</button><button data-min="90">1.5h</button></div><p class="note" id="sleepnote"></p></div>
+    <div class="settings-card"><h3>TV mode</h3><button class="accent-button wide" data-action="enter" id="enterMore">Start Lumen</button><button class="danger-button wide" id="exit">Exit TV mode</button></div>
+    <div class="settings-card"><h3>Audio &amp; volume</h3><label class="note" for="audioOutput">Windows audio output</label><select id="audioOutput" aria-describedby="audioOutputNote"></select><p class="note" id="audioOutputNote" role="status">Loading audio outputs…</p><button class="soft-button wide" id="refreshAudio">Refresh devices</button><label class="haptic-setting" for="volumeAutoHide"><span>Auto-hide volume display<small>Hide after 2 seconds · saved for this room</small></span><input id="volumeAutoHide" type="checkbox" switch checked></label><p class="note">When off, the volume display stays on the TV until you hide it. Volume controls follow the selected Windows output.</p><button class="soft-button wide" data-media="showvolume">Show volume on TV</button><button class="soft-button wide" data-media="hidevolume" id="hideVolume">Hide volume display</button></div>
+    <div class="settings-card"><h3>Projector recognition</h3><p class="note" id="displayRecognition">Checking connected screens…</p><label class="note" for="projectorSelect">Projector / TV screen</label><select id="projectorSelect" aria-label="Projector display"></select><button class="soft-button wide" id="rememberProjector">Remember this screen</button><p class="note">Lumen remembers the Windows monitor identity, not just its name. Switching screens closes the current app.</p></div>
+    <div class="settings-card"><h3>Haptic feedback</h3><label class="haptic-setting" for="hapticsEnabled"><span>Vibrate on remote taps<small>Saved on this phone</small></span><input id="hapticsEnabled" type="checkbox" switch checked aria-describedby="hapticsNote"></label><p class="note" id="hapticsNote">Checking this browser’s vibration support…</p><button class="soft-button wide" id="testHaptics" data-haptic="none">Test haptics</button></div>
+    <div class="settings-card"><h3>Accounts &amp; picture</h3><p class="note">Each app keeps its sign-in in Lumen’s dedicated Edge profile. Open a normal browser window to sign in and use Edge’s save-password prompt.</p><button class="soft-button wide" id="account">Sign in to current app</button><p class="note" id="qualityNote">Playback resolution and buffering appear on the Remote tab when the player exposes them. The service, subscription and display determine the available quality.</p></div>
+    <div class="settings-card install"><h3>Keep Lumen on this phone</h3><p id="addrnote"></p><button class="soft-button wide" id="stable" hidden>Use the permanent address</button><ol><li>Open Safari’s Share menu.</li><li>Choose <b>Add to Home Screen</b>.</li><li>Open Lumen like a normal app from now on.</li></ol></div>
+  </section>
+</main>
+
+<nav aria-label="Remote sections">
+  <button class="on" data-tab="control"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="2.5"/></svg><span>Remote</span></button>
+  <button data-tab="apps"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="6.5" height="6.5" rx="1.6"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.6"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.6"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.6"/></svg><span>Apps</span></button>
+  <button data-tab="type"><svg viewBox="0 0 24 24"><rect x="3" y="6.5" width="18" height="11" rx="2.5"/><path d="M7 10.5h1M11.5 10.5h1M16 10.5h1M8 14h8"/></svg><span>Type</span></button>
+  <button data-tab="more"><svg viewBox="0 0 24 24"><circle cx="6" cy="12" r="1.4"/><circle cx="12" cy="12" r="1.4"/><circle cx="18" cy="12" r="1.4"/></svg><span>More</span></button>
+</nav>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script src="/haptics.js"></script>
+<script src="/remote.js"></script>
+</body>
+</html>

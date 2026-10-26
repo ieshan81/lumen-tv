@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' file: data:; style-src 'self' 'unsafe-inline'; script-src 'self'">
+<title>Lumen TV</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="bg" aria-hidden="true">
+    <div class="blob b1"></div>
+    <div class="blob b2"></div>
+    <div class="grain"></div>
+  </div>
+
+  <header class="top">
+    <div class="brand"><span class="mark"></span>lumen</div>
+    <div class="chip" id="chip"><span class="dot"></span><span id="chip-text">Phone not connected</span></div>
+    <div class="clock">
+      <div class="time" id="time"></div>
+      <div class="date" id="date"></div>
+    </div>
+  </header>
+
+  <section class="hero" id="hero">
+    <div class="hero-letter" id="hero-letter"></div>
+    <div class="hero-copy" id="hero-copy">
+      <div class="eyebrow" id="hero-eyebrow"></div>
+      <h1 id="hero-title"></h1>
+      <p id="hero-desc"></p>
+    </div>
+  </section>
+
+  <section class="rows-viewport" id="viewport">
+    <div class="rows" id="rows"></div>
+  </section>
+
+  <footer class="hints" id="hints"></footer>
+
+  <div class="overlay" id="overlay" hidden>
+    <div class="card">
+      <div class="qr" id="qr"></div>
+      <div class="card-copy">
+        <h2>Use your phone as the remote</h2>
+        <ol>
+          <li>Connect your phone to the same Wi-Fi as this laptop.</li>
+          <li>Scan the code with your camera.</li>
+          <li>On iPhone: open its <b>More</b> tab, then Share, then <b>Add to Home Screen</b>. You never scan again.</li>
+        </ol>
+        <p class="warn" id="blocked" hidden>Windows Firewall is blocking your phone from reaching this laptop. On the laptop, click the Lumen icon in the system tray (bottom right, you may need the ^ arrow), then <b>Fix phone connection</b>, and approve the Windows prompt.</p>
+        <p class="url" id="url"></p>
+        <p class="url" id="stable-row"><span class="small">Address that survives IP changes:</span><br><span id="stable"></span></p>
+        <p class="small"><kbd>Esc</kbd> to close</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <script src="app.js"></script>
+</body>
+</html>

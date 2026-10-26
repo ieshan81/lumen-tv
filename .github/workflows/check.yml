@@ -1,0 +1,21 @@
+name: Check Lumen
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - name: Require Edge for browser integration tests
+        shell: pwsh
+        run: |
+          $edge = Join-Path ${env:ProgramFiles(x86)} 'Microsoft/Edge/Application/msedge.exe'
+          if (-not (Test-Path -LiteralPath $edge)) { throw 'Microsoft Edge is required for integration tests.' }
+      - run: npm test

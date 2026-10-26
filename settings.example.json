@@ -1,0 +1,12 @@
+{
+  "autoTvMode": false,
+  "runAtStartup": true,
+  "projector": { "match": "Y9" },
+  "forceExtend": true,
+  "audio": { "switchToProjector": true, "deviceMatch": "", "volumeAutoHide": true },
+  "homeHotkeys": ["Ctrl+Shift+H", "Alt+Home"],
+  "remote": { "host": "0.0.0.0", "port": 4321, "token": "", "projectorWaitSeconds": 18 },
+  "browser": { "path": "", "debugPort": 9333 },
+  "sleepTimer": { "turnOffProjector": true },
+  "fetchIcons": true
+}
