@@ -58,7 +58,15 @@ test('Edge retains login storage and reports typing and media inside another ori
   });
   await new Promise(resolve => server.listen(0,'0.0.0.0',resolve));
   const browser = new TvBrowser({ debugPort:await freePort(), profileDir:root, headless:true });
-  t.after(async () => { await browser.close(); await new Promise(resolve => server.close(resolve)); fs.rmSync(root,{recursive:true,force:true,maxRetries:10,retryDelay:100}); });
+  t.after(async () => {
+    await browser.close();
+    await new Promise(resolve => server.close(resolve));
+    // Edge may still flush its profile after its debugging socket closes on Windows.
+    // Async retries leave the event loop available while its owned children finish exiting.
+    if (path.dirname(root) === os.tmpdir() && path.basename(root).startsWith('lumen-browser-test-')) {
+      await fs.promises.rm(root,{recursive:true,force:true,maxRetries:20,retryDelay:100});
+    }
+  });
   const tile = {id:'movy',tvShell:true,lockNavigation:true,name:'Fixture',url:`http://127.0.0.1:${server.address().port}/`,blockPopups:false};
   await browser.open(tile);
   await until(async () => (await browser.evaluate('document.readyState')) === 'complete', 'Fixture did not load');
