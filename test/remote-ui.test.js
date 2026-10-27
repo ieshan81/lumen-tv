@@ -27,9 +27,10 @@ async function freePort(){
 test('phone renders Movy, adaptive controls, typing and playback without narrow-screen overflow',{skip:!findEdge(),timeout:60000},async t=>{
   const tiles=loadTiles();
   const messages=[];
+  let connections=0;
   const remote=new RemoteServer({host:'127.0.0.1',port:await freePort(),token:'fixture'});
   let state={t:'state',preview:true,mode:'home',tiles:tiles.map(({id,name,accent})=>({id,name,accent})),running:null,media:null,input:null,focus:null,navigation:'dpad',projector:{connected:true,label:'Synthetic display',reason:'Remembered projector hardware',options:[{id:2,label:'Fixture projector',width:1920,height:1080,selected:true}]},volume:{percent:42,muted:false,name:'Fixture audio'},audio:{status:'idle'},audioDevices:[{id:'hdmi',name:'Fixture HDMI',isDefault:true},{id:'headphones',name:'Fixture headphones',isDefault:false}],volumeAutoHide:true,volumeOverlayVisible:false,sleepAt:null};
-  remote.on('connected',ws=>remote.send(ws,state));
+  remote.on('connected',ws=>{connections++;remote.send(ws,state);});
   remote.on('message',msg=>{
     messages.push(msg);
     if(msg.t==='launch'){
@@ -120,6 +121,16 @@ test('phone renders Movy, adaptive controls, typing and playback without narrow-
   assert.equal(await browser.evaluate('document.querySelector("#volumeAutoHide").checked'),false,'Room auto-hide preference must survive phone reload');
   assert.equal(await browser.evaluate('document.querySelector("#audioOutput").value'),'headphones');
 
+  const beforeRestore=connections;
+  await browser.evaluate('window.dispatchEvent(new PageTransitionEvent("pageshow",{persisted:true}))');
+  await until(()=>connections===beforeRestore+1&&remote.clients.size===1,'Restoring the phone page did not replace its stale connection');
+  const beforeOnline=connections;
+  await browser.evaluate('window.dispatchEvent(new Event("online"))');
+  await until(()=>connections===beforeOnline+1&&remote.clients.size===1,'Returning online did not replace the connection');
+  const beforeTap=messages.filter(msg=>msg.t==='media'&&msg.a==='showvolume').length;
+  await browser.evaluate('document.querySelector("[data-media=showvolume]").click()');
+  await until(()=>messages.filter(msg=>msg.t==='media'&&msg.a==='showvolume').length===beforeTap+1,'Reconnected phone tap was not delivered once');
+
   // Generated evidence is explicitly labeled Design preview in the page itself.
   state.media=null;remote.broadcast(state);
   await until(()=>browser.evaluate('document.body.dataset.mode==="app"'),'Browse controls did not return');
@@ -127,4 +138,10 @@ test('phone renders Movy, adaptive controls, typing and playback without narrow-
   const output=path.join(__dirname,'..','cache','verification');
   fs.mkdirSync(output,{recursive:true});
   fs.writeFileSync(path.join(output,'movy-phone.png'),Buffer.from(screenshot.data,'base64'));
+
+  await browser.cdp.send('Page.addScriptToEvaluateOnNewDocument',{source:'Object.defineProperty(window,"localStorage",{get(){throw new DOMException("Storage denied","SecurityError")}})'} ,browser.pageSession);
+  await browser.cdp.send('Page.reload',{},browser.pageSession);
+  await until(()=>browser.evaluate('document.querySelector("#connectionText")?.textContent==="Connected" && document.body.dataset.mode==="app"'),'Denied phone storage prevented the remote from loading');
+  await browser.evaluate('document.querySelector("[data-pad=touch]").click()');
+  assert.equal(await browser.evaluate('document.querySelector("#touchpad").hidden'),false,'Storage-denied phones must still allow control changes');
 });

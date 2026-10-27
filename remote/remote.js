@@ -6,15 +6,17 @@
   let state = null;
   let retry = 0;
   let reconnectTimer = null;
-  let manualPad = localStorage.getItem('lumen-pad') || '';
+  let connectTimer = null;
+  let phoneStorage;
+  try { phoneStorage = localStorage; } catch { /* restricted/private browser */ }
+  let manualPad = '';
+  try { manualPad = phoneStorage?.getItem('lumen-pad') || ''; } catch { /* storage can be denied */ }
   let appsSignature = '';
   let focusedFieldId = '';
   let dismissedFieldId = '';
   let liveEditTimer = null;
   let displaySignature = '';
   let audioSignature = '';
-  let phoneStorage;
-  try { phoneStorage = localStorage; } catch { /* restricted/private browser */ }
   const haptics = window.createLumenHaptics({ navigator, storage:phoneStorage, visible:() => document.visibilityState === 'visible' });
 
   function connected() { return ws && ws.readyState === WebSocket.OPEN; }
@@ -39,14 +41,21 @@
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
     try { ws = new WebSocket(`${proto}://${location.host}/ws${location.search}`); } catch { scheduleReconnect(); return; }
     const socket = ws;
+    clearTimeout(connectTimer);
+    connectTimer = setTimeout(() => {
+      if (socket !== ws || socket.readyState === WebSocket.OPEN) return;
+      reconnect();
+    }, 7000);
     ws.onopen = () => {
       if (socket !== ws) return;
+      clearTimeout(connectTimer);
       retry = 0;
       setConnection(true, 'Connected');
       renderStatus();
     };
     ws.onclose = () => {
       if (socket !== ws) return;
+      clearTimeout(connectTimer);
       setConnection(false, navigator.onLine ? 'Reconnecting' : 'Offline');
       $('status').textContent = navigator.onLine ? 'Reconnecting to the laptop…' : 'This phone is offline';
       scheduleReconnect();
@@ -59,6 +68,18 @@
       if (msg.t === 'state') { state = msg; renderState(); }
       else if (msg.t === 'toast') toast(msg.text);
     };
+  }
+
+  // A phone can keep a dead socket marked OPEN after sleep, Wi-Fi roaming or back/forward cache.
+  // Retire it before reconnecting so taps cannot silently go to the previous connection.
+  function reconnect() {
+    clearTimeout(reconnectTimer);
+    clearTimeout(connectTimer);
+    const previous = ws;
+    ws = null;
+    if (previous) previous.close();
+    setConnection(false, navigator.onLine ? 'Reconnecting' : 'Offline');
+    connect();
   }
 
   function scheduleReconnect() {
@@ -346,8 +367,10 @@
   function setPad(which, manual) {
     if (manual) {
       manualPad = which === 'auto' ? '' : which;
-      if (manualPad) localStorage.setItem('lumen-pad', manualPad);
-      else localStorage.removeItem('lumen-pad');
+      try {
+        if (manualPad) phoneStorage?.setItem('lumen-pad', manualPad);
+        else phoneStorage?.removeItem('lumen-pad');
+      } catch { /* a denied preference must not disable the remote */ }
     }
     if (which === 'auto') which = state?.mode === 'home' ? 'dpad' : state?.navigation || 'touch';
     $('dpad').hidden = which !== 'dpad';
@@ -453,9 +476,10 @@
     if (wakeLock || document.visibilityState !== 'visible') return;
     try { wakeLock = await navigator.wakeLock.request('screen'); wakeLock.addEventListener('release', () => { wakeLock = null; }); } catch { /* optional */ }
   }
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { connect(); keepAwake(); } else haptics.cancel(); });
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { reconnect(); keepAwake(); } else haptics.cancel(); });
   document.addEventListener('pointerdown', keepAwake, { once: true });
-  window.addEventListener('online', connect);
+  window.addEventListener('online', reconnect);
+  window.addEventListener('pageshow', event => { if (event.persisted) reconnect(); });
   window.addEventListener('offline', () => setConnection(false, 'Offline'));
   function resizeViewport() { document.documentElement.style.setProperty('--visible-height', `${Math.round(window.visualViewport?.height || innerHeight)}px`); }
   window.visualViewport?.addEventListener('resize', resizeViewport);

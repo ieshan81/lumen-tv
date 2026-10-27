@@ -1,5 +1,12 @@
 # Lumen TV verification
 
+## Phone reconnection recovery — October 27, 2026
+
+- The production server was running on all IPv4 interfaces with an existing local-subnet firewall allowance. Authenticated HTTP and WebSocket requests succeeded using both localhost and the current Wi-Fi address. The numeric Wi-Fi address had changed since the preceding session; an old numeric shortcut cannot reach the new address.
+- Phone wake, network-online and back/forward-cache restoration now retire an existing socket and open a fresh authenticated connection. Pending connections have a bounded timeout. Messages from retired sockets are ignored.
+- Denied browser storage no longer prevents initialization or changing the control mode. Preferences remain in memory when persistence is unavailable.
+- The Edge phone fixture verifies restoration/online replacement, one active client, one delivered action after reconnect, and usable controls with storage denied. These are browser-level checks; reachability from the user's physical phone still needs its direct confirmation.
+
 ## Playback overhead, output selection and volume preferences — October 26, 2026
 
 - The running application had not loaded the previous volume-display update. With restart approval, Lumen was restarted and the same movie resumed near the captured position using the provider's saved progress.

@@ -42,6 +42,8 @@ the usual pop-up.
    your camera. (The home screen always opens first; the QR only shows when you ask for it.)
 2. **Put the remote on your iPhone's Home Screen** so you never scan again: in the remote, open the **More** tab,
    press *Switch to the address that never changes*, then Safari's Share button > **Add to Home Screen**.
+   Use that hostname address when saving the shortcut. A shortcut saved with the laptop's numeric Wi-Fi address
+   can stop working after the router assigns a different address; scan the current TV code to pair again.
 3. **Sign in once in Lumen's profile.** Open an app, then use phone **More > Sign in to current app**, or the tray's
    **TV browser: sign in / manage passwords** item. A normal Edge window opens with the same dedicated profile used
    on the projector, including Edge's password-save prompt. Sign in there and choose Save if you want autofill.
