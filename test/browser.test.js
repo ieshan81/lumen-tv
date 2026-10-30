@@ -6,6 +6,7 @@ const os = require('node:os');
 const path = require('node:path');
 const http = require('node:http');
 const net = require('node:net');
+const { EventEmitter } = require('node:events');
 const { TvBrowser, findEdge } = require('../src/browser');
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -39,6 +40,23 @@ test('play/pause uses exactly one headset media key without sending Space', asyn
   browser.key = async () => { throw new Error('Must not send a text key'); };
   assert.equal(await browser.togglePlay(), 'system-media-key');
   assert.equal(keys,1);
+});
+
+test('close waits for its Edge process after the debugging port disappears', async () => {
+  const browser = new TvBrowser({ debugPort:0, profileDir:os.tmpdir() });
+  const child = new EventEmitter();
+  Object.assign(child, { exitCode:null, signalCode:null });
+  browser.child = child;
+  browser._version = async () => null;
+  let closed = false;
+  const closing = browser.close().then(() => { closed = true; });
+  await delay(20);
+  assert.equal(closed, false, 'A closed debugging port does not prove the process exited');
+  child.exitCode = 0;
+  child.emit('exit', 0, null);
+  await closing;
+  assert.equal(browser.child, null);
+  assert.equal(child.listenerCount('exit'), 0);
 });
 
 test('Edge retains login storage and reports typing and media inside another origin', { skip:!findEdge(), timeout:60000 }, async t => {

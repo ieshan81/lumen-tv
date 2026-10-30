@@ -767,15 +767,28 @@ class TvBrowser extends EventEmitter {
   /** Close the TV browser gracefully so logins and cookies are saved. */
   async close() {
     const had = this.cdp;
+    const child = this.child;
     popupCloser.stopPopupSweep(this);
     this.reset();
-    if (!(await this._version())) return;
-    try {
-      if (!had) await this._ensureConnected();
-      await this.cdp.send('Browser.close');
-    } catch { /* it is closing; the socket drops */ }
-    for (let i = 0; i < 20 && (await this._version()); i++) await sleep(250);
+    if (await this._version()) {
+      try {
+        if (!had) await this._ensureConnected();
+        await this.cdp.send('Browser.close');
+      } catch { /* it is closing; the socket drops */ }
+      for (let i = 0; i < 20 && (await this._version()); i++) await sleep(250);
+    }
+    // The debugging port closes before Edge releases its profile singleton. Wait for the
+    // process we launched, so reopening the same profile cannot hand off to an exiting Edge.
+    if (child && child.exitCode === null && child.signalCode === null) {
+      await new Promise(resolve => {
+        const done = () => { clearTimeout(timer); child.removeListener('exit', done); resolve(); };
+        const timer = setTimeout(done, 5000);
+        child.once('exit', done);
+        if (child.exitCode !== null || child.signalCode !== null) done();
+      });
+    }
     this.cdp = null;
+    if (this.child === child) this.child = null;
   }
 
   /** Open the TV profile in a normal window, for signing in or installing an ad blocker. */
