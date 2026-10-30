@@ -100,7 +100,39 @@ with an `exe` tile (like VLC): that uses normal keyboard input, so it needs to b
 Play/Pause can use Windows media keys, like headset controls. Volume uses Windows Core Audio and reports the actual
 selected output's level; the projector's own hardware volume remains controlled by its native remote.
 
-### Picture quality and the shared interface
+### Calibrate the projector picture
+
+Open **More > Projector picture > Calibrate picture** on the phone. The wizard can start TV mode if necessary,
+pauses the current app, and shows a numbered test chart on the selected projector. Darken the room, use a neutral
+projector preset and disable Night Light/automatic picture changes before tuning.
+
+1. Select **Open phone camera** and photograph the complete chart, with flash off and the phone outside the beam.
+   The native camera/photo picker works with the existing local HTTP remote; continuous camera streaming is not required.
+2. On the photo, mark crosses **1, 2, 3, 4** in order and select **Analyze chart**. The phone compensates for perspective
+   and checks grayscale separation, clipping, patch consistency and primary-color alignment.
+3. A usable capture offers a conservative **Preview camera estimate**. Alternatively adjust red/green/blue gain and
+   midtone brightness manually, then select **Preview adjustment**.
+4. The chart disappears so you can compare the real output with **Original / Adjusted**. Select **Save projector profile**
+   to keep the correction, or Cancel to restore the preceding settings. An unsaved preview reverts after two minutes;
+   inactive chart setup expires after ten minutes. **Reset picture profile** removes the saved correction.
+
+Photos are processed on the phone and discarded when the wizard closes. Only 16 small numeric patch readings are
+sent over the authenticated local connection. Profiles contain bounded adjustment values and the projector identity;
+they are stored under the Git-ignored cache and reapplied to that projector on subsequent TV sessions.
+
+This is approximate picture tuning, not a certified colorimeter measurement. Camera processing can hide or create
+color casts; the estimate adjusts gains conservatively and does not infer an absolute white point, color gamut or
+display gamma. Compare the result by eye before saving. Moving the projector, changing the wall/screen, lighting,
+picture preset or Windows color settings can require a new setup.
+
+The Windows backend captures the existing output curves, checks that Advanced Color/HDR is off, targets the chosen
+display's hardware identity, verifies readback, checks other displays for unwanted changes, and restores the baseline
+when TV mode exits. A local recovery journal and worker shutdown restore unfinished changes. Unsupported drivers,
+HDR/Advanced Color and interference from other color settings disable software preview while keeping the reference
+chart available for manual projector adjustment. Windows gamma-ramp APIs have driver and color-management limitations;
+see [Microsoft's documentation](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-setdevicegammaramp).
+
+### Streaming picture quality
 
 HBO Max replaces Twitch in the app list. Movy sits beside Watch JoJo on both the TV home and phone Apps tab.
 The launcher, shared TV presentation layer and phone remote use consistent

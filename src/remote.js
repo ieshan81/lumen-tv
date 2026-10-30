@@ -16,6 +16,9 @@ const FILES = {
   '/remote.css': ['remote.css', 'text/css; charset=utf-8', false, false],
   '/remote.js': ['remote.js', 'text/javascript; charset=utf-8', false, false],
   '/haptics.js': ['haptics.js', 'text/javascript; charset=utf-8', false, false],
+  '/picture-math.js': ['picture-math.js', 'text/javascript; charset=utf-8', false, false],
+  '/calibration-ui.js': ['calibration-ui.js', 'text/javascript; charset=utf-8', false, false],
+  '/calibration.css': ['calibration.css', 'text/css; charset=utf-8', false, false],
   '/outfit.woff2': ['../ui/fonts/outfit-latin-wght-normal.woff2', 'font/woff2', false, false],
   '/manifest.webmanifest': ['manifest.webmanifest', 'application/manifest+json', false, true],
   // icons hold no secrets, and iOS fetches them without cookies when saving to the Home Screen

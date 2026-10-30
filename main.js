@@ -15,6 +15,9 @@ const audio = require('./src/audio');
 const { TvBrowser } = require('./src/browser');
 const { VolumeMonitor } = require('./src/volume');
 const { VolumeOverlay } = require('./src/volume-overlay');
+const { PictureController } = require('./src/picture');
+const { Calibration } = require('./src/calibration');
+const { CalibrationWindow } = require('./src/calibration-window');
 const { SITE_ACTIONS } = require('./src/site-controls');
 const { RemoteServer } = require('./src/remote');
 const firewall = require('./src/firewall');
@@ -60,6 +63,7 @@ let tiles = [];
 let browser;
 let volume;
 let volumeOverlay;
+let calibration;
 let remote;
 let tray;
 
@@ -124,6 +128,7 @@ async function viewState() {
     volume: state.volume,
     controls: state.controls,
     volumeOverlayVisible: !!volumeOverlay?.visible,
+    calibration: calibration ? {...calibration.state} : null,
     navigation: state.navigation,
     remote: { urls, stable: remote ? remote.stableUrl() : '', qr: state.qr, clients: state.clients, blocked: state.firewallBlocked },
     sleepAt: state.sleepAt,
@@ -158,6 +163,7 @@ function remoteState(s) {
     volume: s.volume && {percent:s.volume.percent,muted:s.volume.muted,name:s.volume.name},
     controls: s.controls,
     volumeOverlayVisible: s.volumeOverlayVisible,
+    calibration: s.calibration,
     navigation: s.navigation,
     sleepAt: s.sleepAt,
     stableUrl: s.remote.stable
@@ -292,6 +298,7 @@ async function enterTvMode(display) {
   state.suppressed = false;
   createLauncher(display);
   if(!NO_AUDIO)volume.watch();
+  if(calibration)bg(calibration.restoreProfile(display,screen.dipToScreenRect(null,display.bounds)));
   if (state.firewallBlocked) {
     setTimeout(() => toast('Your phone can\'t reach the remote: Windows Firewall is blocking it. On the laptop, click the Lumen tray icon, then "Fix phone connection".'), 3500);
   }
@@ -333,6 +340,7 @@ async function enterTvMode(display) {
 async function exitTvMode({ suppress = false } = {}) {
   if (state.mode === 'off') return;
   log('leaving TV mode', suppress ? '(user)' : '');
+  await calibration?.detach().catch(error=>log('could not restore projector picture:',error.message));
   state.mode = 'off';
   state.display = null;
   volume?.stop();
@@ -367,6 +375,7 @@ async function exitTvMode({ suppress = false } = {}) {
 
 async function goHome() {
   if (state.mode === 'off') return;
+  if(calibration?.active)await calibration.cancel();
   if (state.mode === 'app') browser.pause().catch(() => {});
   state.mode = 'home';
   showLauncher();
@@ -472,10 +481,12 @@ async function evaluateDisplays() {
         if (settings.autoTvMode && !state.suppressed) await enterTvMode(projector);
       } else {
         const moved=reconnected||state.display?.id!==projector.id||JSON.stringify(state.display?.bounds)!==JSON.stringify(projector.bounds);
+        if(moved&&calibration)await calibration.detach().catch(error=>log('picture display change:',error.message));
         state.display = projector;
         if (state.win && !DEV) state.win.setBounds(projector.bounds);
         input.setClamp(screen.dipToScreenRect(null, projector.bounds));
         if(moved&&browser.active)await browser.place(projector.bounds).catch(err=>log('could not reposition TV browser:',err.message));
+        if(moved&&calibration)bg(calibration.restoreProfile(projector,screen.dipToScreenRect(null,projector.bounds)));
       }
     } else {
       if (state.mode !== 'off') {
@@ -685,6 +696,25 @@ async function startTvMode() {
 }
 
 async function handleRemote(msg) {
+  if(msg.t==='calibration'){
+    try{
+      if(msg.action==='start'){
+        if(state.mode==='off'&&!(await startTvMode()))throw new Error(state.lastError||'Connect the projector and start Lumen first.');
+        volumeOverlay.hide();
+        await calibration.start(state.display,screen.dipToScreenRect(null,state.display.bounds));
+      }else if(msg.action==='cancel'){
+        if(calibration.active&&msg.sessionId===calibration.state.sessionId)await calibration.cancel();
+      }else if(msg.action==='reset'){
+        if(!state.display)throw new Error('Start Lumen before resetting the projector picture.');
+        await calibration.reset(state.display,screen.dipToScreenRect(null,state.display.bounds));
+      }else await calibration.handle(msg);
+    }catch(error){calibration.publish({error:error.message});toast(error.message);}
+    return;
+  }
+  if(calibration?.active&&!['exit','audio','volume-preferences'].includes(msg.t)){
+    if(msg.t==='home'||(msg.t==='key'&&['Back','Esc'].includes(msg.k)))await calibration.cancel();
+    return;
+  }
   switch (msg.t) {
     case 'audio':
       if (msg.action === 'refresh') await refreshAudioDevices();
@@ -806,6 +836,7 @@ async function syncMediaState() {
   mediaSyncBusy = true;
   try {
     const interaction = viaBrowser() ? await browser.interactionState() : { media: null, input: null, focus: null, controls: {}, navigation: 'dpad' };
+    if(calibration?.active){interaction.input=null;interaction.focus=null;}
     const media = interaction.media;
     if (media && media.currentTime) media.currentTime = Math.round(media.currentTime);
     if (media && media.duration) media.duration = Math.round(media.duration);
@@ -979,7 +1010,7 @@ app.whenReady().then(async () => {
   volume.on('snapshot',snapshot=>{
     const previous=state.volume;state.volume=snapshot;
     const changed=JSON.stringify(previous)!==JSON.stringify(snapshot);
-    if(state.mode!=='off'&&previous&&changed)volumeOverlay.show(state.display,snapshot);
+    if(state.mode!=='off'&&previous&&changed&&!calibration?.active)volumeOverlay.show(state.display,snapshot);
     if(changed)pushState().catch(err=>log('could not publish volume:',err.message));
   });
   volume.on('unavailable',()=>{if(state.volume){state.volume=null;pushState().catch(()=>{});}});
@@ -990,6 +1021,10 @@ app.whenReady().then(async () => {
     profileDir: path.join(process.env.LOCALAPPDATA || app.getPath('userData'), 'LumenTV', 'edge-profile'),
     mediaKey: () => input.tap('PlayPause')
   });
+  const picture=new PictureController(DEV?{driver:{command:async()=>{throw new Error('Hardware picture adjustment is disabled in development mode.');},stop(){}}}:{});
+  calibration=new Calibration({picture,window:new CalibrationWindow(),pause:()=>browser.active?browser.pause():Promise.resolve()});
+  calibration.on('change',()=>pushState().catch(error=>log('picture state:',error.message)));
+  try{await picture.recover();}catch(error){calibration.publish({error:error.message});log('picture recovery:',error.message);}finally{picture.driver.stop();}
   browser.on('title', () => pushState());
   browser.on('home-requested', () => goHome());
   let lastRedirectWarning = 0;

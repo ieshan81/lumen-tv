@@ -18,6 +18,7 @@
   let displaySignature = '';
   let audioSignature = '';
   const haptics = window.createLumenHaptics({ navigator, storage:phoneStorage, visible:() => document.visibilityState === 'visible' });
+  const calibration = typeof window.createLumenCalibration==='function' ? window.createLumenCalibration({send,toast}) : {render(){ $('calibratePicture').disabled=true; $('pictureProfileNote').textContent='Restart Lumen to load picture setup.'; }};
 
   function connected() { return ws && ws.readyState === WebSocket.OPEN; }
   function send(msg) {
@@ -264,6 +265,7 @@
   }
 
   function renderState() {
+    calibration.render(state);
     renderStatus();
     renderPower();
     renderNowPlaying();

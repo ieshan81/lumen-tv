@@ -1,5 +1,17 @@
 # Lumen TV verification
 
+## Guided projector picture calibration — October 29, 2026
+
+- Added a phone wizard under More > Projector picture with native camera/photo capture, four-corner perspective alignment, local numeric patch sampling, capture-quality checks, a bounded camera tint estimate, manual gain/midtone controls, Original/Adjusted comparison, Save and Reset.
+- Native photo capture works with the existing HTTP remote and does not require a live camera stream or installing a certificate. The camera/photo-picker hint is browser-dependent. Physical iPhone capture still requires a user-run check. Photos and metadata are not uploaded; only 16 numeric patch summaries are sent to the authenticated local app, and the image buffer is cleared when setup closes.
+- Measurements are explicitly labeled as unverified phone-camera estimates. The software does not claim a measured D65 white point, calibrated gamma, Delta E score or professional color accuracy.
+- Picture changes use a persistent local Windows worker on the selected display hardware identity. The worker rejects HDR/Advanced Color, checks curve readback and compares other displays before/after each write. Camera corrections only attenuate channels by up to 6%; manual controls have bounded monotonic curves.
+- A native Y9 test applied a temporary 1% red-gain change, confirmed readback with the other displays unchanged, restored the preceding curves and verified restoration. The controller wrote its recovery journal before the change and removed it only after restoration. This verifies the Windows control path, not the optical color accuracy of the projector.
+- The live application was restarted from TV home, and its production remote reported an active Y9 calibration session with native picture support. The actual chart window was inspected through desktop capture.
+- All 35 automated tests pass locally. New coverage includes perspective sampling, rejection of clipped/dim/misaligned photos, bounded suggestions, stale session rejection, preview-before-save, Original/Adjusted and cancellation, preview timeout even under a full command queue, unsupported-driver fallback, hardware-keyed profile storage and recovery ordering. A real headless Edge fixture exercises photo decode/corner sampling/analysis, comparison and saving, confirms the image is discarded, and checks phone layout at 320x568, 390x844 and 844x390.
+- A separate native EOF/shutdown test applied a temporary curve, ended the worker input without an explicit restore, then opened a new controller. Windows readback confirmed the original curve had been restored and the recovery journal was reconciled.
+- The desktop chart capture and synthetic phone wizard capture are in the ignored verification cache. Neither is a physical camera measurement or proof of final in-room color improvement.
+
 ## Phone reconnection recovery — October 27, 2026
 
 - The production server was running on all IPv4 interfaces with an existing local-subnet firewall allowance. Authenticated HTTP and WebSocket requests succeeded using both localhost and the current Wi-Fi address. The numeric Wi-Fi address had changed since the preceding session; an old numeric shortcut cannot reach the new address.
