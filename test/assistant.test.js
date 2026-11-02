@@ -56,6 +56,16 @@ test('Movy episodes are parsed and Continue Watching survives restart', () => {
   fs.rmSync(dir, { recursive:true, force:true });
 });
 
+test('a blank Movy rail image cannot erase enriched Continue Watching art', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lumen-history-art-'));
+  const file = path.join(dir, 'history.json');
+  const history = new WatchHistory({ file, writeIntervalMs:0 });
+  history.items = [{ key:'movie:1384216::', ref:'movie:1384216', url:'https://www.movy.sx/movie/1384216?play=true', title:'The Dog Stars', position:478, duration:7136, progress:.067, artwork:'https://image.tmdb.org/t/p/w1280/dog-stars.jpg', updatedAt:1 }];
+  assert.equal(history.merge([{ key:'movie:1384216::', ref:'movie:1384216', url:'https://www.movy.sx/movie/1384216?play=true', title:'The Dog Stars', position:480, duration:7136, progress:.0672, artwork:'', updatedAt:2 }]), true);
+  assert.equal(history.publicItems()[0].artwork, 'https://image.tmdb.org/t/p/w1280/dog-stars.jpg');
+  fs.rmSync(dir, { recursive:true, force:true });
+});
+
 test('Jarvis parses recommendation, YouTube and resume requests without an LLM', async () => {
   assert.deepEqual(parseIntent('Yo Jarvis, I feel like watching something horror Indonesian'), { type:'recommend', genre:'horror', country:'indonesian', language:'indonesian', mediaType:'movie', query:'I feel like watching something horror Indonesian' });
   assert.equal(parseIntent('did Mrwhosetheboss put anything on YouTube').type, 'youtube');

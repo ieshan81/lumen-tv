@@ -91,7 +91,7 @@ class WatchHistory {
       // still wins when it is newer or this is a first import.
       if (previous && previous.updatedAt > incoming.updatedAt && previous.position > 0) continue;
       if (index >= 0) this.items.splice(index, 1);
-      this.items.push({ ...previous, ...incoming, updatedAt:Number(incoming.updatedAt) || Date.now() });
+      this.items.push({ ...previous, ...incoming, artwork:incoming.artwork || previous?.artwork || '', updatedAt:Number(incoming.updatedAt) || Date.now() });
       changed = true;
     }
     if (changed) {
