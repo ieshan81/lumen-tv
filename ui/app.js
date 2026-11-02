@@ -5,7 +5,7 @@
   const fallbackHero = { title:'Settle in.', overview:'Open an app or ask Jarvis what you feel like watching.', backdrop:'', mediaType:'Lumen', year:'', rating:0 };
 
   function appItem(tile) {
-    return { key:`app:${tile.id}`, id:tile.id, type:'app', title:tile.name, subtitle:tile.desc, accent:tile.accent, mark:tile.id==='youtube'?'▶':tile.name.slice(0,1), activate:()=>lumen.launch(tile.id) };
+    return { key:`app:${tile.id}`, id:tile.id, type:'app', title:tile.name, subtitle:tile.desc, accent:tile.accent, image:tile.icon, mark:tile.id==='youtube'?'▶':tile.name.slice(0,1), activate:()=>lumen.launch(tile.id) };
   }
   function contentItem(item, resume = false) {
     const progress = Number(item.progress || 0);
@@ -26,7 +26,7 @@
   }
   function card(item,rowKind) {
     const button=document.createElement('button');button.className=`media-card ${item.type} ${rowKind==='dock'?'app-tile':''}`;button.dataset.key=item.key;
-    if(rowKind==='dock'){const mark=document.createElement('span');mark.className='app-mark';mark.textContent=item.mark||item.title.slice(0,1);button.appendChild(mark);}else if(item.image){const img=document.createElement('img');img.src=item.image;img.alt='';img.decoding='async';button.appendChild(img);}else{const mono=document.createElement('span');mono.className='mono';mono.textContent=item.mono||'L';button.appendChild(mono);}
+    if(rowKind==='dock'){const mark=document.createElement('span');mark.className='app-mark';mark.textContent=item.mark||item.title.slice(0,1);if(item.image){const icon=document.createElement('img');icon.className='app-icon';icon.src=item.image;icon.alt='';icon.decoding='async';icon.onerror=()=>icon.replaceWith(mark);button.appendChild(icon);}else button.appendChild(mark);}else if(item.image){const img=document.createElement('img');img.src=item.image;img.alt='';img.decoding='async';button.appendChild(img);}else{const mono=document.createElement('span');mono.className='mono';mono.textContent=item.mono||'L';button.appendChild(mono);}
     const shade=document.createElement('span');shade.className='shade';button.appendChild(shade);
     const copy=document.createElement('span');copy.className='card-copy';const title=document.createElement('b');title.textContent=item.title;const sub=document.createElement('small');sub.textContent=item.subtitle||'';copy.append(title,sub);button.appendChild(copy);
     if(item.progress>0){const progress=document.createElement('span');progress.className='progress';progress.innerHTML=`<i style="width:${Math.round(item.progress*100)}%"></i>`;button.appendChild(progress);}

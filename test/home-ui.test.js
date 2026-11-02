@@ -33,7 +33,8 @@ test('movie art drives both the hero and its fireplace palette', () => {
   assert.match(source, /const title=data\.title\|\|data\.series\|\|fallbackHero\.title/);
   assert.match(source, /lumenHearth\?\.setArtwork\(next\)/);
   assert.match(source, /logoUrl=data\.logo\|\|''/);
-  assert.match(source, /rowKind==='dock'.*app-mark/);
+  assert.match(source, /image:tile\.icon/);
+  assert.match(source, /rowKind==='dock'.*app-icon/);
   assert.doesNotMatch(source, /jet-active|systemLine/);
 
   const blue = new Uint8ClampedArray(8 * 4);
