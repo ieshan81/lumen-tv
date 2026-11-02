@@ -16,6 +16,16 @@ function imageUrl(file, size = 'w1280') {
   return file ? `https://image.tmdb.org/t/p/${size}${file}` : '';
 }
 
+function selectLogo(logos = []) {
+  return logos.filter(logo => logo && logo.file_path).sort((left, right) => {
+    const score = logo => (logo.iso_639_1 === 'en' ? 1000 : logo.iso_639_1 == null ? 500 : 0)
+      + Math.min(250, Number(logo.vote_count || 0) * 8)
+      + Number(logo.vote_average || 0) * 10
+      + Math.min(120, Number(logo.width || 0) / 20);
+    return score(right) - score(left);
+  })[0] || null;
+}
+
 function normalize(item, fallbackType = 'movie') {
   if (!item || !Number.isFinite(Number(item.id))) return null;
   const mediaType = item.media_type === 'tv' || item.first_air_date || item.name ? 'tv' : item.media_type === 'movie' ? 'movie' : fallbackType;
@@ -30,6 +40,7 @@ function normalize(item, fallbackType = 'movie') {
     rating: Number(item.vote_average || 0),
     backdrop: imageUrl(item.backdrop_path, 'w1280'),
     poster: imageUrl(item.poster_path, 'w500'),
+    logo: '', logoChecked: false,
     popularity: Number(item.popularity || 0),
     url: `https://www.movy.sx/${mediaType}/${Number(item.id)}?play=true`
   };
@@ -71,7 +82,8 @@ class Catalog extends EventEmitter {
       return this.publicState();
     }
     const age = Date.now() - this.state.updatedAt;
-    if (!this.state.featured.length || age > this.cacheHours * 3600000) await this.refresh().catch(() => {});
+    const legacyCache = this.state.featured.some(item => item.logoChecked !== true);
+    if (!this.state.featured.length || age > this.cacheHours * 3600000 || legacyCache) await this.refresh().catch(() => {});
     else this.state.status = 'ready';
     this.emit('change');
     return this.publicState();
@@ -89,11 +101,29 @@ class Catalog extends EventEmitter {
   async request(route, params = {}) {
     if (!this.token) throw new Error('TMDB is not configured');
     const url = new URL(`https://api.themoviedb.org/3/${route}`);
-    url.searchParams.set('language', 'en-US');
-    for (const [key, value] of Object.entries(params)) if (value !== '' && value != null) url.searchParams.set(key, String(value));
+    const language = Object.hasOwn(params, 'language') ? params.language : 'en-US';
+    if (language) url.searchParams.set('language', String(language));
+    for (const [key, value] of Object.entries(params)) if (key !== 'language' && value !== '' && value != null) url.searchParams.set(key, String(value));
     const response = await this.fetch(url, { headers: { Authorization: `Bearer ${this.token}`, Accept: 'application/json' }, signal: AbortSignal.timeout(10000) });
     if (!response.ok) throw new Error(`TMDB returned ${response.status}`);
     return response.json();
+  }
+
+  async enrichLogos(items, concurrency = 4) {
+    const queue = items.slice();
+    const worker = async () => {
+      while (queue.length) {
+        const item = queue.shift();
+        try {
+          const images = await this.request(`${item.mediaType}/${item.id}/images`, { language: '', include_image_language: 'en,null' });
+          const selected = selectLogo(images.logos);
+          item.logo = selected ? imageUrl(selected.file_path, 'w500') : '';
+        } catch { item.logo = ''; }
+        item.logoChecked = true;
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(concurrency, Math.max(1, queue.length)) }, worker));
+    return items;
   }
 
   async refresh() {
@@ -103,6 +133,7 @@ class Catalog extends EventEmitter {
       const seen = new Set();
       const featured = (data.results || []).map(item => normalize(item)).filter(item => item && item.backdrop && !seen.has(item.ref) && seen.add(item.ref)).slice(0, 18);
       if (!featured.length) throw new Error('TMDB returned no usable titles');
+      await this.enrichLogos(featured);
       this.state = { status: 'ready', error: '', updatedAt: Date.now(), featured };
       atomicWrite(this.cacheFile, { updatedAt: this.state.updatedAt, featured });
     } catch (error) {
@@ -138,4 +169,4 @@ class Catalog extends EventEmitter {
   }
 }
 
-module.exports = { Catalog, normalize, parseRef, GENRES, COUNTRIES, LANGUAGES };
+module.exports = { Catalog, normalize, parseRef, selectLogo, GENRES, COUNTRIES, LANGUAGES };

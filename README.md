@@ -8,13 +8,13 @@ Requires Windows, Microsoft Edge and Node.js. This repository includes the launc
 and JoJo/Movy integrations. The external websites and their catalogs remain operated by their respective providers.
 No streaming account, saved login, API credential or browser profile is included.
 
-The current home screen uses live TMDB artwork, a superhero-tech HUD and a flying focus marker. Movy's own Continue
+The current home screen pairs live TMDB backdrops with each title's transparent logo, a movie-reactive fireplace ambience, and one simple launcher strip for JoJo, Movy and YouTube. Movy's own Continue
 Watching rail is imported locally with exact episode routes and progress. **Jarvis** uses Windows' offline speech
 recognizer plus a deterministic intent engine—no resident LLM—to recommend titles, find recent YouTube uploads, and
 resume a named movie or episode. Network catalog metadata is cached; speech recognition sleeps outside TV mode.
 
 ```
- laptop  --HDMI-->  projector (Y9)          phone (same Wi-Fi)
+ laptop  --HDMI-->  projector               phone (same Wi-Fi)
    |                    ^                          |
    |  tray app watches  |  fullscreen launcher     |  touchpad, d-pad, typing,
    |  for the display   |  + Edge for the apps     |  volume, home, sleep timer

@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
-const { normalize } = require('../src/catalog');
+const { Catalog, normalize, selectLogo } = require('../src/catalog');
 const { WatchHistory, parseMovyUrl } = require('../src/watch-history');
 const { AssistantEngine, parseIntent } = require('../src/assistant');
 
@@ -13,6 +13,34 @@ test('catalog metadata becomes Movy-ready cinematic content', () => {
   assert.equal(item.ref, 'movie:99');
   assert.equal(item.url, 'https://www.movy.sx/movie/99?play=true');
   assert.equal(item.backdrop, 'https://image.tmdb.org/t/p/w1280/hero.jpg');
+});
+
+test('catalog fetches and ranks transparent title artwork for movies and series', async () => {
+  const chosen = selectLogo([
+    { file_path:'/plain.png', iso_639_1:null, vote_average:9, vote_count:50, width:1200 },
+    { file_path:'/english.png', iso_639_1:'en', vote_average:7, vote_count:2, width:900 }
+  ]);
+  assert.equal(chosen.file_path, '/english.png');
+
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lumen-catalog-'));
+  const requests = [];
+  const fetchImpl = async url => {
+    requests.push(String(url));
+    if (url.pathname.endsWith('/trending/all/week')) return { ok:true, json:async()=>({ results:[
+      { id:99, media_type:'movie', title:'A Film', release_date:'2026-01-01', backdrop_path:'/hero.jpg' },
+      { id:77, media_type:'tv', name:'A Series', first_air_date:'2025-01-01', backdrop_path:'/series.jpg' }
+    ] }) };
+    return { ok:true, json:async()=>({ logos:[{ file_path:url.pathname.includes('/movie/')?'/movie-logo.png':'/series-logo.png', iso_639_1:'en', width:1000 }] }) };
+  };
+  const catalog = new Catalog({ root:dir, fetchImpl, cacheFile:path.join(dir, 'catalog.json') });
+  catalog.token = 'fixture-token';
+  const state = await catalog.refresh();
+  assert.equal(state.featured[0].logo, 'https://image.tmdb.org/t/p/w500/movie-logo.png');
+  assert.equal(state.featured[1].logo, 'https://image.tmdb.org/t/p/w500/series-logo.png');
+  assert.ok(state.featured.every(item => item.logoChecked));
+  assert.equal(requests.filter(url => /\/(movie|tv)\/\d+\/images/.test(url)).length, 2);
+  assert.ok(requests.filter(url => url.includes('/images')).every(url => url.includes('include_image_language=en%2Cnull') && !url.includes('language=en-US')));
+  fs.rmSync(dir, { recursive:true, force:true });
 });
 
 test('Movy episodes are parsed and Continue Watching survives restart', () => {
