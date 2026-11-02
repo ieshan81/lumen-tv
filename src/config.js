@@ -31,6 +31,12 @@ const DEFAULT_SETTINGS = {
   // When the sleep timer ends: pause, close the app, leave TV mode, and (optionally) cut the signal
   // so the projector can go to standby by itself.
   sleepTimer: { turnOffProjector: true },
+  // During this local-time window, keep the decorative galaxy light opposite the Y9 projector.
+  galaxyNightSync: { enabled: true, start: '20:00', end: '08:00' },
+  // Keep the movie inside the projector cloth and use the overspill as a responsive ambient halo.
+  halo: { enabled: false, mode: 'app', intensity: 0.35, points: [{ x: 0.08, y: 0.08 }, { x: 0.92, y: 0.08 }, { x: 0.92, y: 0.92 }, { x: 0.08, y: 0.92 }] },
+  // Uses Windows' offline speech recognizer. No local LLM is kept in memory.
+  assistant: { enabled: true, wakeWords: ['Jarvis', 'Lumen'], speak: true },
   // Download each tile's site icon once (from Google's favicon service) to make the tiles prettier.
   fetchIcons: true
 };
@@ -47,6 +53,30 @@ function merge(base, over) {
   return out;
 }
 
+function migrateStoredSettings(stored) {
+  if (!isObj(stored)) return {};
+  // v0.1 stored four axis-aligned edge insets. Migrate the raw file before
+  // merging defaults, otherwise DEFAULT_SETTINGS.halo.points would mask the
+  // legacy frame and silently replace a user's existing alignment.
+  if (isObj(stored.halo) && isObj(stored.halo.frame) && !Array.isArray(stored.halo.points)) {
+    const frame = stored.halo.frame;
+    const left = Number(frame.left);
+    const top = Number(frame.top);
+    const right = Number(frame.right);
+    const bottom = Number(frame.bottom);
+    if ([left, top, right, bottom].every(Number.isFinite)) {
+      stored.halo.points = [
+        { x: left, y: top },
+        { x: 1 - right, y: top },
+        { x: 1 - right, y: 1 - bottom },
+        { x: left, y: 1 - bottom }
+      ];
+    }
+    delete stored.halo.frame;
+  }
+  return stored;
+}
+
 function loadSettings() {
   let stored = {};
   try {
@@ -54,6 +84,7 @@ function loadSettings() {
   } catch {
     // first run, or unreadable file: fall back to defaults
   }
+  stored = migrateStoredSettings(stored);
   const settings = merge(DEFAULT_SETTINGS, stored);
   if (!settings.remote.token) {
     settings.remote.token = crypto.randomBytes(9).toString('base64url');
@@ -80,4 +111,4 @@ function loadTiles() {
     .map((t) => ({ accent: '#7c8cff', desc: '', ...t }));
 }
 
-module.exports = { ROOT, loadSettings, saveSettings, loadTiles, DEFAULT_SETTINGS };
+module.exports = { ROOT, loadSettings, saveSettings, loadTiles, DEFAULT_SETTINGS, migrateStoredSettings };

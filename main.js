@@ -15,11 +15,16 @@ const audio = require('./src/audio');
 const { TvBrowser } = require('./src/browser');
 const { VolumeMonitor } = require('./src/volume');
 const { VolumeOverlay } = require('./src/volume-overlay');
-const { PictureController } = require('./src/picture');
-const { Calibration } = require('./src/calibration');
-const { CalibrationWindow } = require('./src/calibration-window');
+const { HaloController, DEFAULT_HALO, normalizeHalo, parseHalo, contentBounds, nudgePoint } = require('./src/halo');
+const { AmbientSampler } = require('./src/ambient');
 const { SITE_ACTIONS } = require('./src/site-controls');
 const { RemoteServer } = require('./src/remote');
+const { ProjectorIr, shouldUseIrVolume } = require('./src/projector-ir');
+const { GalaxySync } = require('./src/galaxy-sync');
+const { Catalog } = require('./src/catalog');
+const { WatchHistory } = require('./src/watch-history');
+const { AssistantEngine, WAKE } = require('./src/assistant');
+const { JarvisListener } = require('./src/jarvis-listener');
 const firewall = require('./src/firewall');
 
 app.setName('Lumen TV');
@@ -63,8 +68,17 @@ let tiles = [];
 let browser;
 let volume;
 let volumeOverlay;
-let calibration;
+let halo;
+let haloPreview=null;
+let haloPoint=0;
+let ambient;
 let remote;
+let projectorIr;
+let galaxySync;
+let catalog;
+let watchHistory;
+let assistant;
+let jarvis;
 let tray;
 
 const state = {
@@ -94,6 +108,9 @@ const state = {
   volume: null,
   controls: {},
   navigation: 'dpad',
+  assistant: { status: 'idle', message: '', heard: '', items: [], updatedAt: 0 },
+  pendingResume: null,
+  historySignature: '',
   qrFor: '',
   qr: ''
 };
@@ -109,6 +126,13 @@ async function viewState() {
   const running = browser.status();
   const runningTile = running && tiles.find((t) => t.id === running.tileId);
   const detectedProjector = displays.findProjector(settings);
+  const projectorState={
+    ...displays.recognitionState(settings),
+    connected: !!detectedProjector,
+    label: (detectedProjector && detectedProjector.label) || '',
+    match: (settings.projector && settings.projector.match) || 'projector'
+  };
+  const irVolume=projectorIr?.state?.status==='ready'&&shouldUseIrVolume({volume:state.volume,audioDevices:state.audioDevices,projector:{...settings.projector,label:projectorState.label}});
   return {
     mode: state.mode,
     tiles: tiles.map((t) => ({ id: t.id, name: t.name, desc: t.desc, accent: t.accent, icon: state.icons[t.id] || null })),
@@ -128,17 +152,18 @@ async function viewState() {
     volume: state.volume,
     controls: state.controls,
     volumeOverlayVisible: !!volumeOverlay?.visible,
-    calibration: calibration ? {...calibration.state} : null,
+    halo: {...normalizeHalo(haloPreview||settings.halo),guide:!!halo?.guide,selectedPoint:haloPoint,dynamic:ambient?{status:ambient.status,error:ambient.error}:{status:'off',error:''}},
+    ir: projectorIr ? projectorIr.publicState() : {configured:false,status:'loading',remotes:[],buttons:[]},
+    galaxy: galaxySync ? galaxySync.publicState() : {enabled:false,night:false,status:'loading',desired:null,start:'20:00',end:'08:00'},
+    volumeTarget:{kind:irVolume?'projector':'windows',label:irVolume?(projectorIr.state.remoteName||'Projector speaker'):(state.volume?.name||state.audio?.name||'Windows audio')},
     navigation: state.navigation,
     remote: { urls, stable: remote ? remote.stableUrl() : '', qr: state.qr, clients: state.clients, blocked: state.firewallBlocked },
     sleepAt: state.sleepAt,
     hotkeys: settings.homeHotkeys,
-    projector: {
-      ...displays.recognitionState(settings),
-      connected: !!detectedProjector,
-      label: (detectedProjector && detectedProjector.label) || '',
-      match: (settings.projector && settings.projector.match) || 'projector'
-    }
+    projector: projectorState,
+    catalog: catalog ? catalog.publicState() : { status: 'loading', error: '', featured: [] },
+    continueWatching: watchHistory ? watchHistory.publicItems() : [],
+    assistant: { ...state.assistant, voice: jarvis ? jarvis.publicState() : { status: 'disabled', listening: false, armed: false, error: '' } }
   };
 }
 
@@ -163,10 +188,15 @@ function remoteState(s) {
     volume: s.volume && {percent:s.volume.percent,muted:s.volume.muted,name:s.volume.name},
     controls: s.controls,
     volumeOverlayVisible: s.volumeOverlayVisible,
-    calibration: s.calibration,
+    halo:s.halo,
+    ir: s.ir,
+    galaxy:s.galaxy,
+    volumeTarget:s.volumeTarget,
     navigation: s.navigation,
     sleepAt: s.sleepAt,
-    stableUrl: s.remote.stable
+    stableUrl: s.remote.stable,
+    continueWatching: s.continueWatching,
+    assistant: s.assistant
   };
 }
 
@@ -184,10 +214,34 @@ function toast(text) {
   if (remote) remote.broadcast({ t: 'toast', text });
 }
 
+function haloConfig(){return normalizeHalo(haloPreview||settings?.halo||DEFAULT_HALO);}
+function haloAccent(value=haloConfig()){
+  if(value.mode!=='app'||state.mode!=='app')return '#8b7cff';
+  const running=browser?.status?.(),tile=running&&tiles.find(item=>item.id===running.tileId);
+  return tile?.accent||'#8b7cff';
+}
+function projectorContentBounds(display=state.display,value=haloConfig()){return !display?.bounds?null:value.enabled?contentBounds(display.bounds,value):{...display.bounds};}
+function contentDisplay(display=state.display){const bounds=projectorContentBounds(display);return display&&bounds?{...display,bounds}:display;}
+function updateHaloVisual(value=haloConfig()){
+  if(!halo||!state.display)return;
+  if(value.enabled||halo.guide)halo.show(state.display,value,{accent:haloAccent(value),guide:halo.guide,zones:ambient?.zones||[],dynamic:ambient?.status||'fallback',selected:haloPoint});else halo.hide();
+}
+function placeLauncher(value=haloConfig()){
+  const win=state.win;if(DEV||!win||win.isDestroyed()||!state.display)return;
+  win.setBounds(state.display.bounds);if(!win.isFullScreen())win.setFullScreen(true);
+}
+async function applyHaloLayout({moveBrowser=true}={}){
+  if(!state.display)return;const value=haloConfig(),bounds=projectorContentBounds(state.display,value);
+  if(value.enabled){if(ambient.status==='off'||ambient.display?.id!==state.display.id)ambient.startStream(state.display,value.points);else ambient.updatePoints(value.points);}else ambient.stop();
+  updateHaloVisual(value);placeLauncher(value);input.setClamp(screen.dipToScreenRect(null,bounds));
+  if(browser?.active){await browser.setProjectorLayout(value.enabled?value:null);if(moveBrowser)await browser.place(state.display.bounds,{fullscreen:true});}
+  if(state.win&&!state.win.isDestroyed()&&state.win.isVisible())state.win.webContents.send('state',await viewState());
+}
+
 // ---------------------------------------------------------------- launcher window
 
 function createLauncher(display) {
-  const b = display.bounds;
+  const b=display.bounds;
   const win = new BrowserWindow({
     x: DEV ? b.x + 60 : b.x,
     y: DEV ? b.y + 60 : b.y,
@@ -230,6 +284,7 @@ function createLauncher(display) {
 function showLauncher() {
   const win = state.win;
   if (!win || win.isDestroyed()) return;
+  placeLauncher();updateHaloVisual();
   if (!DEV) win.setAlwaysOnTop(true, 'screen-saver');
   win.show();
   win.focus();
@@ -297,13 +352,13 @@ async function enterTvMode(display) {
       : { status: 'switching', name: '', error: '' };
   state.suppressed = false;
   createLauncher(display);
+  await applyHaloLayout({moveBrowser:false});
   if(!NO_AUDIO)volume.watch();
-  if(calibration)bg(calibration.restoreProfile(display,screen.dipToScreenRect(null,display.bounds)));
   if (state.firewallBlocked) {
     setTimeout(() => toast('Your phone can\'t reach the remote: Windows Firewall is blocking it. On the laptop, click the Lumen tray icon, then "Fix phone connection".'), 3500);
   }
-  input.setClamp(screen.dipToScreenRect(null, display.bounds));
   registerHotkeys();
+  if (settings.assistant?.enabled !== false) jarvis?.start();
   if (!DEV) {
     state.blocker = powerSaveBlocker.start('prevent-display-sleep');
     if (settings.audio.switchToProjector && !NO_AUDIO) {
@@ -340,8 +395,8 @@ async function enterTvMode(display) {
 async function exitTvMode({ suppress = false } = {}) {
   if (state.mode === 'off') return;
   log('leaving TV mode', suppress ? '(user)' : '');
-  await calibration?.detach().catch(error=>log('could not restore projector picture:',error.message));
   state.mode = 'off';
+  haloPreview=null;ambient?.stop();halo?.hide();
   state.display = null;
   volume?.stop();
   volumeOverlay?.close();
@@ -368,6 +423,8 @@ async function exitTvMode({ suppress = false } = {}) {
   state.input = null;
   state.focus = null;
   state.controls = {};
+  state.pendingResume = null;
+  jarvis?.stop();
   await audio.restore(change).catch((err) => log('could not restore sound:', err.message));
   await browser.close().catch((err) => log('closing browser:', err.message));
   pushState();
@@ -375,9 +432,9 @@ async function exitTvMode({ suppress = false } = {}) {
 
 async function goHome() {
   if (state.mode === 'off') return;
-  if(calibration?.active)await calibration.cancel();
   if (state.mode === 'app') browser.pause().catch(() => {});
   state.mode = 'home';
+  updateHaloVisual();
   showLauncher();
   pushState();
 }
@@ -385,14 +442,16 @@ async function goHome() {
 async function resumeApp() {
   if (state.mode !== 'home' || !browser.active) return;
   state.mode = 'app';
+  updateHaloVisual();
   if (state.win) state.win.hide();
   await browser.bringToFront();
   await focusApp();
   pushState();
 }
 
-async function launchTile(id) {
-  const tile = tiles.find((t) => t.id === id);
+async function launchTile(id, override = null) {
+  const baseTile = tiles.find((t) => t.id === id);
+  const tile = baseTile && override ? { ...baseTile, ...override } : baseTile;
   if (!tile || state.launching) return;
   if (state.mode === 'off') {
     const projector = displays.findProjector(settings);
@@ -402,6 +461,7 @@ async function launchTile(id) {
   if (tile.exe) {
     spawn(tile.exe, tile.args || [], { detached: true, stdio: 'ignore' }).unref();
     state.mode = 'app';
+    updateHaloVisual();
     if (state.win) state.win.hide();
     return pushState();
   }
@@ -412,8 +472,9 @@ async function launchTile(id) {
   state.controls = {};
   pushState();
   try {
-    await browser.open(tile, state.display.bounds);
+    const value=haloConfig();await browser.open(tile,state.display.bounds,{fullscreen:true,layout:value.enabled?value:null});
     state.mode = 'app';
+    updateHaloVisual(value);
     if (state.win) state.win.hide();
     await browser.bringToFront();
     await focusApp();
@@ -423,6 +484,52 @@ async function launchTile(id) {
   } finally {
     state.launching = null;
     pushState();
+  }
+}
+
+async function launchContent(ref, options = {}) {
+  let item = typeof ref === 'object' && ref ? ref : null;
+  if (!item && catalog) item = await catalog.detail(String(ref));
+  if (item && options.url) item = { ...item, url: String(options.url), title: options.title || item.title };
+  if (!item || !item.url) return toast('That title is not available right now.');
+  const position = Number(options.position || item.position) || 0;
+  state.pendingResume = position > 0 ? { position, attempts: 0 } : null;
+  await launchTile('movy', { url: item.url, name: item.series || item.title || 'Movy', contentRef: item.ref || '' });
+}
+
+function speak(text) {
+  if (!text || process.platform !== 'win32' || settings?.assistant?.speak === false) return;
+  const child = spawn('powershell.exe', [
+    '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File',
+    path.join(cfg.ROOT, 'scripts', 'jarvis-speak.ps1'), '-Text', String(text).slice(0, 280)
+  ], { windowsHide: true, stdio: 'ignore' });
+  child.unref();
+}
+
+async function handleAssistant(text, { fromVoice = false } = {}) {
+  const heard = String(text || '').trim();
+  if (!heard) return;
+  if (fromVoice && !jarvis?.state.armed && !WAKE.test(heard)) return;
+  jarvis?.disarm();
+  state.assistant = { status: 'thinking', message: '', heard, items: [], updatedAt: Date.now() };
+  await pushState();
+  try {
+    const result = await assistant.resolve(heard);
+    state.assistant = { status: 'ready', message: result.message || '', heard, items: result.items || [], updatedAt: Date.now() };
+    if (result.action === 'resume') await launchContent(result.item, { position: result.item.position });
+    else if (result.action === 'url') await launchTile(result.tileId || 'web', { url: result.url, name: 'YouTube' });
+    else if (result.action === 'app') await launchTile(result.tileId);
+    else {
+      if (state.mode === 'app') await goHome();
+      await pushState();
+    }
+    speak(result.message);
+  } catch (error) {
+    log('assistant:', error.message);
+    state.assistant = { status: 'error', message: 'Jarvis could not complete that request.', heard, items: [], updatedAt: Date.now() };
+    toast(state.assistant.message);
+    speak(state.assistant.message);
+    await pushState();
   }
 }
 
@@ -467,6 +574,18 @@ let extendAttempts = 0; // tries to switch the projector on since it was last se
 let lastProjectorSignature = '';
 let displayMissingSince = 0;
 
+function projectorOnForGalaxy(detected=!!displays.findProjector(settings)){
+  const assumed=settings?.galaxyNightSync?.projectorAssumedOn;
+  return typeof assumed==='boolean'?assumed:detected;
+}
+
+async function rememberProjectorPower(on){
+  settings.galaxyNightSync={...settings.galaxyNightSync,projectorAssumedOn:!!on};
+  cfg.saveSettings(settings);
+  galaxySync?.clearManual();
+  if(galaxySync)await galaxySync.reconcile(!!on,settings.galaxyNightSync,true);
+}
+
 async function evaluateDisplays() {
   if (evaluating) return;
   evaluating = true;
@@ -481,12 +600,8 @@ async function evaluateDisplays() {
         if (settings.autoTvMode && !state.suppressed) await enterTvMode(projector);
       } else {
         const moved=reconnected||state.display?.id!==projector.id||JSON.stringify(state.display?.bounds)!==JSON.stringify(projector.bounds);
-        if(moved&&calibration)await calibration.detach().catch(error=>log('picture display change:',error.message));
         state.display = projector;
-        if (state.win && !DEV) state.win.setBounds(projector.bounds);
-        input.setClamp(screen.dipToScreenRect(null, projector.bounds));
-        if(moved&&browser.active)await browser.place(projector.bounds).catch(err=>log('could not reposition TV browser:',err.message));
-        if(moved&&calibration)bg(calibration.restoreProfile(projector,screen.dipToScreenRect(null,projector.bounds)));
+        if(moved)await applyHaloLayout().catch(err=>log('could not reposition projector content:',err.message));
       }
     } else {
       if (state.mode !== 'off') {
@@ -520,6 +635,7 @@ async function evaluateDisplays() {
     evaluating = false;
     updateTray();
     const current = displays.findProjector(settings);
+    if(galaxySync)await galaxySync.reconcile(current?projectorOnForGalaxy(true):false,settings.galaxyNightSync).catch(err=>log('galaxy sync:',err.message));
     const signature = current ? `${current.id}:${current.label || ''}` : 'none';
     if (signature !== lastProjectorSignature) {
       lastProjectorSignature = signature;
@@ -540,7 +656,8 @@ function scheduleEvaluate(delay = 1500) {
 let lastMoveAt = 0;
 
 function ensureCursorOnProjector() {
-  const rect = state.display && screen.dipToScreenRect(null, state.display.bounds);
+  const bounds=projectorContentBounds();
+  const rect = bounds && screen.dipToScreenRect(null, bounds);
   if (!rect) return;
   const p = input.cursor();
   if (p.x < rect.x || p.y < rect.y || p.x >= rect.x + rect.width || p.y >= rect.y + rect.height) input.center();
@@ -575,15 +692,26 @@ function remoteKey(k) {
 
 const MEDIA = {
   playpause: () => (viaBrowser() ? bg(browser.togglePlay()) : input.tap('PlayPause')),
-  volup: () => bg(adjustVolume('up')),
-  voldown: () => bg(adjustVolume('down')),
-  mute: () => bg(adjustVolume('mute')),
+  volup: () => bg(routeVolume('up')),
+  voldown: () => bg(routeVolume('down')),
+  mute: () => bg(routeVolume('mute')),
   showvolume: () => bg(adjustVolume('read')),
   hidevolume: () => { volumeOverlay.hide(); bg(pushState()); },
   back10: () => (viaBrowser() ? bg(browser.seekBy(-10)) : ensureAppFocus() && input.tap('Left')),
   fwd10: () => (viaBrowser() ? bg(browser.seekBy(10)) : ensureAppFocus() && input.tap('Right')),
   fullscreen: () => (viaBrowser() ? bg(browser.fullscreen()) : ensureAppFocus() && input.tap('F'))
 };
+
+async function routeVolume(command){
+  const projector={...settings.projector,label:state.display?.label||''};
+  const useIr=projectorIr?.state?.status==='ready'&&shouldUseIrVolume({volume:state.volume,audioDevices:state.audioDevices,projector});
+  if(!useIr)return adjustVolume(command);
+  const button={up:'volumeUp',down:'volumeDown',mute:'mute'}[command];
+  if(!projectorIr.state.buttons.some(item=>item.id===button))return adjustVolume(command);
+  await projectorIr.press(button);
+  toast(`${projectorIr.state.lastButton} sent to the projector speaker.`);
+  await pushState();
+}
 
 let audioRefresh = null;
 async function refreshAudioDevices() {
@@ -612,7 +740,7 @@ async function chooseAudioDevice(id) {
     cfg.saveSettings(settings);
     state.audio = {status:'ready',name:change.name,error:''};
     state.volume = await volume.read().catch(() => null);
-    volumeOverlay.show(state.display,state.volume);
+    volumeOverlay.show(contentDisplay(),state.volume);
   } catch (error) {
     state.audio = {...previousAudio,error:error.message};
     toast(error.message);
@@ -625,11 +753,11 @@ async function adjustVolume(command){
   try{
     const snapshot=await volume.command(command);
     state.volume=snapshot;
-    if(state.mode!=='off')volumeOverlay.show(state.display,snapshot);
+    if(state.mode!=='off')volumeOverlay.show(contentDisplay(),snapshot);
     await pushState();
   }catch(err){
     state.volume=null;
-    if(state.mode!=='off')volumeOverlay.show(state.display,null);
+    if(state.mode!=='off')volumeOverlay.show(contentDisplay(),null);
     toast('Windows volume is unavailable. Use the laptop volume keys.');
     log('volume control failed:',err.message);
     await pushState();
@@ -679,6 +807,7 @@ async function startTvMode() {
       state.startMessage = 'Opening Lumen on the projector…';
       await pushState();
       await enterTvMode(projector);
+      await rememberProjectorPower(true);
       return true;
     } catch (err) {
       state.lastError = err.message || 'Lumen could not start TV mode.';
@@ -696,26 +825,54 @@ async function startTvMode() {
 }
 
 async function handleRemote(msg) {
-  if(msg.t==='calibration'){
-    try{
-      if(msg.action==='start'){
-        if(state.mode==='off'&&!(await startTvMode()))throw new Error(state.lastError||'Connect the projector and start Lumen first.');
-        volumeOverlay.hide();
-        await calibration.start(state.display,screen.dipToScreenRect(null,state.display.bounds));
-      }else if(msg.action==='cancel'){
-        if(calibration.active&&msg.sessionId===calibration.state.sessionId)await calibration.cancel();
-      }else if(msg.action==='reset'){
-        if(!state.display)throw new Error('Start Lumen before resetting the projector picture.');
-        await calibration.reset(state.display,screen.dipToScreenRect(null,state.display.bounds));
-      }else await calibration.handle(msg);
-    }catch(error){calibration.publish({error:error.message});toast(error.message);}
-    return;
-  }
-  if(calibration?.active&&!['exit','audio','volume-preferences'].includes(msg.t)){
-    if(msg.t==='home'||(msg.t==='key'&&['Back','Esc'].includes(msg.k)))await calibration.cancel();
-    return;
-  }
   switch (msg.t) {
+    case 'assistant':
+      if (msg.action === 'arm') {
+        jarvis?.arm();
+        state.assistant = { ...state.assistant, status: 'listening', message: 'Listening…', updatedAt: Date.now() };
+        await pushState();
+      } else if (msg.action === 'query' && typeof msg.text === 'string') await handleAssistant(msg.text);
+      else if (msg.action === 'dismiss') {
+        state.assistant = { status: 'idle', message: '', heard: '', items: [], updatedAt: Date.now() };
+        await pushState();
+      }
+      break;
+    case 'content':
+      if (msg.action === 'resume') {
+        const item = watchHistory?.publicItems(40).find(entry => entry.key === msg.key);
+        if (item) await launchContent(item, { position: item.position });
+      } else if (typeof msg.ref === 'string') await launchContent(msg.ref);
+      break;
+    case 'ir':
+      if(msg.action==='refresh')await projectorIr.refresh();
+      else if(msg.action==='select'&&typeof msg.remoteId==='string')await projectorIr.select(msg.remoteId);
+      else if(msg.action==='press'&&typeof msg.button==='string'){
+        await projectorIr.press(msg.button);
+        if(msg.button==='power'){
+          const next=!projectorOnForGalaxy();
+          await rememberProjectorPower(next);
+          toast(`Projector power sent · Galaxy sync now treats the projector as ${next?'on':'off'}.`);
+        }else toast(`${projectorIr.state.lastButton} sent to the projector.`);
+      }
+      await pushState();
+      break;
+    case 'galaxy-settings': {
+      const validTime=value=>typeof value==='string'&&/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value);
+      if(typeof msg.enabled!=='boolean'||!validTime(msg.start)||!validTime(msg.end))break;
+      settings.galaxyNightSync={...settings.galaxyNightSync,enabled:msg.enabled,start:msg.start,end:msg.end};
+      cfg.saveSettings(settings);
+      await galaxySync.reconcile(projectorOnForGalaxy(),settings.galaxyNightSync,true);
+      await pushState();
+      break;
+    }
+    case 'galaxy-command': {
+      if(!['power','powerOff'].includes(msg.button))break;
+      const result=await projectorIr.pressNamed('Galaxy Projector',msg.button);
+      galaxySync.manual(msg.button==='power'?'on':'off');
+      toast(`${result.button} sent to Galaxy Projector. Night sync is paused for 30 minutes.`);
+      await pushState();
+      break;
+    }
     case 'audio':
       if (msg.action === 'refresh') await refreshAudioDevices();
       else if (msg.action === 'select' && typeof msg.id === 'string') await chooseAudioDevice(msg.id);
@@ -727,6 +884,55 @@ async function handleRemote(msg) {
       volumeOverlay.setAutoHide(msg.autoHide);
       await pushState();
       break;
+    case 'halo': {
+      if(msg.action==='select-point'){
+        if(!state.display){toast('Start Lumen before defining the screen corners.');break;}
+        if(!Number.isInteger(msg.point)||msg.point<0||msg.point>3)break;
+        haloPoint=msg.point;haloPreview=null;halo.setGuide(true);updateHaloVisual();await pushState();break;
+      }
+      if(msg.action==='nudge'){
+        if(!state.display||!Number.isInteger(msg.point)||msg.point<0||msg.point>3)break;
+        try{settings.halo=nudgePoint(settings.halo,msg.point,Number(msg.dx),Number(msg.dy));}
+        catch(error){toast(error.message);break;}
+        haloPoint=msg.point;haloPreview=null;halo.setGuide(true);cfg.saveSettings(settings);await applyHaloLayout({moveBrowser:false});await pushState();break;
+      }
+      if(msg.action==='guide'){
+        if(!state.display){toast('Start Lumen before showing the frame guide.');break;}
+        haloPreview=null;
+        halo.setGuide(!halo.guide);
+        updateHaloVisual();
+        await pushState();
+        break;
+      }
+      if(msg.action==='reset'){
+        const current=normalizeHalo(settings.halo);
+        settings.halo={...current,points:DEFAULT_HALO.points.map(point=>({...point}))};
+        haloPoint=0;
+        haloPreview=null;
+        cfg.saveSettings(settings);
+        if(state.display)halo.setGuide(true);
+        await applyHaloLayout({moveBrowser:false});
+        await pushState();
+        toast('Four corners reset. Select a corner and align its crosshair with the cloth.');
+        break;
+      }
+      if(msg.action!=='preview'&&msg.action!=='save')break;
+      let value;
+      try{value=parseHalo(msg);}catch(error){toast(error.message);break;}
+      if(msg.action==='preview'){
+        haloPreview=value;
+        updateHaloVisual(value);
+        await pushState();
+        break;
+      }
+      settings.halo=value;
+      haloPreview=null;
+      cfg.saveSettings(settings);
+      await applyHaloLayout({moveBrowser:false});
+      await pushState();
+      toast(value.enabled?'Halo saved. Lumen content now fits inside the screen frame.':'Halo is off. Full projector area restored.');
+      break;
+    }
     case 'projector': {
       if(typeof msg.id!=='number'||!Number.isSafeInteger(msg.id))break;
       const id=msg.id;
@@ -831,15 +1037,38 @@ async function handleRemote(msg) {
 
 let mediaSyncBusy = false;
 let mediaSignature = '';
+let lastMovyHistoryImport = 0;
 async function syncMediaState() {
   if (mediaSyncBusy) return;
   mediaSyncBusy = true;
   try {
     const interaction = viaBrowser() ? await browser.interactionState() : { media: null, input: null, focus: null, controls: {}, navigation: 'dpad' };
-    if(calibration?.active){interaction.input=null;interaction.focus=null;}
     const media = interaction.media;
     if (media && media.currentTime) media.currentTime = Math.round(media.currentTime);
     if (media && media.duration) media.duration = Math.round(media.duration);
+    if (viaBrowser() && browser.tile?.id === 'movy' && Date.now() - lastMovyHistoryImport > 10000) {
+      lastMovyHistoryImport = Date.now();
+      const imported = await browser.continueWatching();
+      if (watchHistory?.merge(imported)) state.historySignature = '';
+    }
+    if (media && browser?.status) {
+      const running = browser.status();
+      if (watchHistory?.capture({ url: running?.url, tileId: running?.tileId, title: running?.title, media })) {
+        const historySignature = JSON.stringify(watchHistory.publicItems());
+        if (historySignature !== state.historySignature) {
+          state.historySignature = historySignature;
+          setTimeout(() => pushState().catch(() => {}), 0);
+        }
+      }
+      if (state.pendingResume && media.duration > 0 && media.readyState > 0) {
+        const pending = state.pendingResume;
+        pending.attempts++;
+        if (await browser.seekTo(pending.position)) {
+          state.pendingResume = null;
+          toast(`Resumed at ${Math.floor(pending.position / 60)}:${String(Math.round(pending.position % 60)).padStart(2, '0')}.`);
+        } else if (pending.attempts > 20) state.pendingResume = null;
+      }
+    }
     const signature = JSON.stringify(interaction);
     if (signature !== mediaSignature) {
       mediaSignature = signature;
@@ -967,6 +1196,8 @@ async function quit() {
   await exitTvMode({}).catch(() => {});
   volume?.stop();
   volumeOverlay?.close();
+  ambient?.stop();
+  halo?.close();
   if (remote) remote.stop();
   app.exit(0);
 }
@@ -1003,14 +1234,23 @@ app.on('second-instance', () => {
 app.whenReady().then(async () => {
   Menu.setApplicationMenu(null);
   settings = cfg.loadSettings();
+  settings.halo=normalizeHalo(settings.halo);
+  cfg.saveSettings(settings);
   tiles = cfg.loadTiles();
+  catalog = new Catalog({ root: cfg.ROOT });
+  watchHistory = new WatchHistory({ root: cfg.ROOT });
+  assistant = new AssistantEngine({ catalog, history: watchHistory });
+  jarvis = new JarvisListener({ root: cfg.ROOT, enabled: settings.assistant?.enabled !== false });
   volume=new VolumeMonitor();
   volumeOverlay=new VolumeOverlay({autoHide:settings.audio.volumeAutoHide !== false});
+  halo=new HaloController();
+  ambient=new AmbientSampler();
+  ambient.on('status',()=>{updateHaloVisual();pushState().catch(error=>log('ambient Halo state:',error.message));});
   volumeOverlay.on('visibility',()=>pushState().catch(()=>{}));
   volume.on('snapshot',snapshot=>{
     const previous=state.volume;state.volume=snapshot;
     const changed=JSON.stringify(previous)!==JSON.stringify(snapshot);
-    if(state.mode!=='off'&&previous&&changed&&!calibration?.active)volumeOverlay.show(state.display,snapshot);
+    if(state.mode!=='off'&&previous&&changed)volumeOverlay.show(contentDisplay(),snapshot);
     if(changed)pushState().catch(err=>log('could not publish volume:',err.message));
   });
   volume.on('unavailable',()=>{if(state.volume){state.volume=null;pushState().catch(()=>{});}});
@@ -1021,10 +1261,16 @@ app.whenReady().then(async () => {
     profileDir: path.join(process.env.LOCALAPPDATA || app.getPath('userData'), 'LumenTV', 'edge-profile'),
     mediaKey: () => input.tap('PlayPause')
   });
-  const picture=new PictureController(DEV?{driver:{command:async()=>{throw new Error('Hardware picture adjustment is disabled in development mode.');},stop(){}}}:{});
-  calibration=new Calibration({picture,window:new CalibrationWindow(),pause:()=>browser.active?browser.pause():Promise.resolve()});
-  calibration.on('change',()=>pushState().catch(error=>log('picture state:',error.message)));
-  try{await picture.recover();}catch(error){calibration.publish({error:error.message});log('picture recovery:',error.message);}finally{picture.driver.stop();}
+  catalog.on('change', () => pushState().catch(error => log('catalog state:', error.message)));
+  jarvis.on('change', () => pushState().catch(error => log('Jarvis state:', error.message)));
+  jarvis.on('speech', text => handleAssistant(text, { fromVoice: true }).catch(error => log('Jarvis command:', error.message)));
+  await catalog.init().catch(error => log('catalog init:', error.message));
+  watchHistory.enrich(catalog).then(() => pushState()).catch(() => {});
+  projectorIr=new ProjectorIr();
+  projectorIr.on('change',()=>pushState().catch(error=>log('IR state:',error.message)));
+  galaxySync=new GalaxySync({ir:projectorIr});
+  galaxySync.on('change',()=>pushState().catch(error=>log('galaxy state:',error.message)));
+  projectorIr.refresh().then(()=>galaxySync.reconcile(projectorOnForGalaxy(),settings.galaxyNightSync,true)).catch(error=>log('IR setup:',error.message));
   browser.on('title', () => pushState());
   browser.on('home-requested', () => goHome());
   let lastRedirectWarning = 0;
@@ -1060,7 +1306,13 @@ app.whenReady().then(async () => {
   tray.on('click', () => (state.mode === 'off' ? handleRemote({ t: 'enter' }) : goHome()));
 
   ipcMain.on('ui-ready', () => pushState());
+  ipcMain.on('halo-ambient', (event, value) => {
+    if(!halo?.win||halo.win.isDestroyed()||event.sender!==halo.win.webContents)return;
+    ambient.acceptStreamState(value);
+  });
   ipcMain.on('launch', (_e, id) => launchTile(String(id)));
+  ipcMain.on('content', (_e, ref, options) => launchContent(String(ref), options || {}));
+  ipcMain.on('assistant', (_e, text) => handleAssistant(String(text || '')));
   ipcMain.on('action', (_e, name, arg) => {
     if (name === 'exit') exitTvMode({ suppress: true });
     else if (name === 'resume') resumeApp();

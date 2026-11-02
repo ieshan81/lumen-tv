@@ -1,17 +1,50 @@
 # Lumen TV verification
 
-## Guided projector picture calibration — October 29, 2026
+## Cinematic home, Movy history and local Jarvis — November 2, 2026
 
-- Added a phone wizard under More > Projector picture with native camera/photo capture, four-corner perspective alignment, local numeric patch sampling, capture-quality checks, a bounded camera tint estimate, manual gain/midtone controls, Original/Adjusted comparison, Save and Reset.
-- Native photo capture works with the existing HTTP remote and does not require a live camera stream or installing a certificate. The camera/photo-picker hint is browser-dependent. Physical iPhone capture still requires a user-run check. Photos and metadata are not uploaded; only 16 numeric patch summaries are sent to the authenticated local app, and the image buffer is cleared when setup closes.
-- Measurements are explicitly labeled as unverified phone-camera estimates. The software does not claim a measured D65 white point, calibrated gamma, Delta E score or professional color accuracy.
-- Picture changes use a persistent local Windows worker on the selected display hardware identity. The worker rejects HDR/Advanced Color, checks curve readback and compares other displays before/after each write. Camera corrections only attenuate channels by up to 6%; manual controls have bounded monotonic curves.
-- A native Y9 test applied a temporary 1% red-gain change, confirmed readback with the other displays unchanged, restored the preceding curves and verified restoration. The controller wrote its recovery journal before the change and removed it only after restoration. This verifies the Windows control path, not the optical color accuracy of the projector.
-- The live application was restarted from TV home, and its production remote reported an active Y9 calibration session with native picture support. The actual chart window was inspected through desktop capture.
-- All 36 automated tests pass locally. New coverage includes perspective sampling, rejection of clipped/dim/misaligned photos, bounded suggestions, stale session rejection, preview-before-save, Original/Adjusted and cancellation, preview timeout even under a full command queue, unsupported-driver fallback, hardware-keyed profile storage and recovery ordering. A real headless Edge fixture exercises photo decode/corner sampling/analysis, comparison and saving, confirms the image is discarded, and checks phone layout at 320x568, 390x844 and 844x390.
-- The first CI run passed the calibration coverage but exposed an existing Edge close/reopen race. Browser shutdown now waits for the owned process after the debugging port disappears; a regression test covers that interval, and the real Edge fixture verifies login storage survives reopening.
-- A separate native EOF/shutdown test applied a temporary curve, ended the worker input without an explicit restore, then opened a new controller. Windows readback confirmed the original curve had been restored and the recovery journal was reconciled.
-- The desktop chart capture and synthetic phone wizard capture are in the ignored verification cache. Neither is a physical camera measurement or proof of final in-room color improvement.
+- Rebuilt the live projector home with cached TMDB backdrops, cinematic spotlight rotation, a superhero-tech HUD,
+  flying dock focus indicator, Continue Watching progress and a Jarvis recommendations shelf. The spotlight owns OK
+  after the interface becomes idle, while any directional input restores explicit shelf focus.
+- Rebuilt the phone UI around two destinations, Remote and Room. Player, episode, keyboard, pointer, projector D-pad,
+  routed volume, Galaxy, audio output and four-point controls remain adaptive. The synthetic Edge fixture passed at
+  320×568, 390×844 and 844×390 with no horizontal overflow.
+- Replaced circular numbered calibration dots with dual-stroke precision crosshairs. The underlying four-point
+  homography, in-place nudging and real-time Halo renderer are unchanged.
+- Added a DPAPI-protected TMDB credential store, six-hour catalog cache and local watch-history store. Movy's real
+  Continue Watching rail was imported from its rendered DOM without reading or storing its account token. The live
+  rail supplied Dead-End Job, Chernobyl, American Horror Story, Family Guy S9E18 and F1 with exact episode routes,
+  artwork, timestamps and progress.
+- Added Jarvis using Windows' installed offline en-US speech engine and deterministic intents, not a resident LLM.
+  The live recommendation request returned 18 Indonesian horror titles. A live “continue our Family Guy episode”
+  request opened `/tv/1434/9/18?play=true`, restored near 16:20 and was observed playing at 16:49/21:51. A live
+  Mrwhosetheboss request opened YouTube search sorted by upload date.
+- `npm run check` passed and `npm test` passed all 51 tests. The launcher and phone were visually inspected after a
+  production restart; Lumen was left running on Home. Software evidence does not prove microphone pickup from the
+  user's physical room position or iPhone haptics, which still require a native iOS wrapper.
+
+## Feathered real-time Halo and Movy popup containment — November 2, 2026
+
+- Replaced repeated `desktopCapturer.getSources()` thumbnail polling with one continuous Y9 media stream in the Halo renderer. Frames are reduced to 192×108 for thirty-six near-boundary color samples on a 32 ms gate, smoothed and painted directly without a renderer-to-main-process round trip. Fast attack follows large scene changes while a slower fall prevents one dark frame from flickering the wall. The remote still receives explicit `starting`, `live` and protected/black-frame `fallback` states.
+- Added a 480×270 captured-frame extension in three depths: a close 6-pixel texture blur, a 20-pixel bloom and a 48-pixel broad wash, which scale to roughly 24/80/190 pixels on Y9. These retain spatial detail from the real picture instead of reducing each side to three colors. Thirty-six calibrated edge bands provide far-field support and the protected-video fallback. The phone brightness control spans 4–100%; this production Y9 is set to 72%.
+- The movie quadrilateral remains completely transparent, while four multiplicative border masks reach zero alpha at every projector-raster edge. The transparent Halo window is marked capture-protected so its display capture sees the underlying movie rather than recursively amplifying previous Halo frames. A controlled red/blue protected-renderer test measured a 119 ms median and 151 ms p95 across ten post-warmup transitions; the outermost pixel was transparent black. `scripts/measure-halo-latency.js` repeats this diagnostic when Lumen is started with diagnostic port 9334.
+- A five-second live renderer sample maintained a 4.3 ms p95 animation interval and spent about 6.4% of elapsed time in renderer tasks. `cache/verification/halo-edge-extension-layer.png` is the real capture-protected Halo layer. `cache/verification/halo-edge-extension-composite.png` combines near-concurrent underlying-Y9 and protected-layer captures for visual inspection; it is not a single camera photograph of the wall.
+- Removed the browser reposition from corner nudge/reset/save operations. `scripts/check-halo-corner-live.js` moved and exactly restored a real saved point while polling the production Edge window 23 times; every sample remained `fullscreen`, and the prior guide state was restored.
+- Chromium's unavoidable bottom-left link preview is prevented by keeping TV links under Lumen-owned visual focus rather than native anchor focus. Enter still activates the selected link exactly once, focus labels still reach the phone and native button/form behavior remains intact. `cache/verification/halo-prominent-live.png` is a direct Y9 raster capture with Movy focused, a prominent multi-color Halo, no taskbar/titlebar and no link-preview bubble.
+- Reproduced Movy's black Opera-GX interruption and established that it was not a JavaScript alert: the site injected a sandboxed `about:srcdoc` iframe with `allow-popups allow-modals`, a fake browser-dialog UI and `$G$` postMessage/open handlers. The payload was visible in a flattened DOM snapshot while absent from the top document's visible text and dialog selectors.
+- `src/popup-closer.js` now permanently locks popup/dialog APIs for opted-in tiles, intercepts the suspicious `HTMLIFrameElement.srcdoc` payload before rendering and removes copies inserted through other DOM paths. DRM/account providers remain excluded from this protection.
+- The restarted production build ran the real `https://www.movy.sx/` catalog beyond the previous delayed reproduction point. Its exact hostile `srcdoc` probe was rejected, three real frame-insertion attempts were counted and removed, and the observation reported zero native dialogs, extra pages, visible Opera overlays, surviving Opera `srcdoc` frames or off-origin navigations. `cache/verification/movy-clean-smooth-halo-final.png` and `cache/verification/halo-prominent-live.png` are direct Y9 raster captures after those runs.
+- The API-level popup design was cross-checked against AdGuard's public PopupBlocker project; no advertised extension, browser add-on or third-party executable was installed. Lumen keeps the narrow per-tile protections under its own test coverage.
+- Final validation passed: `npm run check`, all 48 automated tests, `npm audit --omit=dev` with zero reported vulnerabilities and `git diff --check`.
+
+## Manual screen frame and overspill Halo — November 1, 2026
+
+- Removed the camera/color-correction workflow and kept Halo as a geometry plus ambient-light feature. The phone now exposes four independently selectable cloth corners in clockwise order, a directional nudge pad, 0.25%/0.5%/1% step sizes, reset and a numbered projector guide. Server-side validation rejects collapsed, crossed, off-raster or stale geometry. Legacy Left/Top/Right/Bottom settings migrate to equivalent points before defaults are merged.
+- The launcher and Edge remain fullscreen across the complete Y9 raster. A projective CSS homography maps their source rectangle to the saved quadrilateral, while a transparent click-through, focusless, always-on-top Electron renderer owns the overspill. The center quadrilateral is cut completely clear. This separates Windows chrome suppression from cloth fitting: neither the Edge title bar nor taskbar needs to sit inside the projected image.
+- `src/ambient.js` captures a 320×180 Y9 thumbnail around four times per second, samples three positions along each edge, converts the Windows bitmap to sRGB colors and smooths successive results. Black/protected/unavailable captures fall back to the current app accent and report `fallback`; live captures report `live`. The fallback is deliberate and does not claim DRM bypass.
+- `npm run check` passed. `npm test` passed all 45 tests, including exact four-corner homography, legacy migration, hostile/folded-setting rejection, 12-zone sampling, protected-frame fallback, fullscreen placement, transparent overlay focus/Z-order, authenticated phone command delivery and no horizontal overflow at 320×568, 390×844 and 844×390.
+- Live authenticated state reported Y9 connected, YouTube active, Halo enabled at 40%, the preserved prior alignment converted to four points, guide hidden and dynamic status `live`. A live test selected point 1, moved it by 0.25%, observed the saved geometry change, moved it back exactly and hid the guide. The prior YouTube URL was restored at 486.720843 seconds and left paused.
+- `cache/verification/halo-y9-live.png` and `cache/verification/halo-y9-video.png` are direct Windows captures of the real Y9 raster. They show fullscreen content with no Windows taskbar or Edge title bar and independently colored overspill. `cache/verification/halo-remote.png` is synthetic phone-layout evidence, not a photograph of the physical wall.
+- Physical optical alignment and the perceived light on the wall still require the user to place all four numbered points while looking at the cloth. Software capture verifies the Y9 raster, homography and live sampling; it does not prove the projector's optical keystone, wall color, camera exposure, DRM-provider capture behavior or in-room appearance.
 
 ## Phone reconnection recovery — October 27, 2026
 

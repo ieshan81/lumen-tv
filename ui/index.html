@@ -2,59 +2,37 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' file: data:; style-src 'self' 'unsafe-inline'; script-src 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' file: data: https://image.tmdb.org; style-src 'self' 'unsafe-inline'; script-src 'self'">
 <title>Lumen TV</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div class="bg" aria-hidden="true">
-    <div class="blob b1"></div>
-    <div class="blob b2"></div>
-    <div class="grain"></div>
-  </div>
-
-  <header class="top">
-    <div class="brand"><span class="mark"></span>lumen</div>
-    <div class="chip" id="chip"><span class="dot"></span><span id="chip-text">Phone not connected</span></div>
-    <div class="clock">
-      <div class="time" id="time"></div>
-      <div class="date" id="date"></div>
-    </div>
+  <div class="backdrop" id="backdrop" aria-hidden="true"></div>
+  <div class="wash" aria-hidden="true"></div>
+  <div class="hud" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+  <header class="topbar">
+    <div class="brand"><span class="reactor"><b></b></span><span>LUMEN</span><small>HOME SYSTEM</small></div>
+    <div class="jarvis-status" id="jarvis"><span class="voice-bars"><i></i><i></i><i></i></span><b>JARVIS</b><span id="jarvisText">Ready</span></div>
+    <div class="status-chip" id="chip"><i></i><span id="chipText">Remote offline</span></div>
+    <div class="clock"><b id="time"></b><span id="date"></span></div>
   </header>
-
-  <section class="hero" id="hero">
-    <div class="hero-letter" id="hero-letter"></div>
-    <div class="hero-copy" id="hero-copy">
-      <div class="eyebrow" id="hero-eyebrow"></div>
-      <h1 id="hero-title"></h1>
-      <p id="hero-desc"></p>
-    </div>
-  </section>
-
-  <section class="rows-viewport" id="viewport">
-    <div class="rows" id="rows"></div>
-  </section>
-
-  <footer class="hints" id="hints"></footer>
-
-  <div class="overlay" id="overlay" hidden>
-    <div class="card">
-      <div class="qr" id="qr"></div>
-      <div class="card-copy">
-        <h2>Use your phone as the remote</h2>
-        <ol>
-          <li>Connect your phone to the same Wi-Fi as this laptop.</li>
-          <li>Scan the code with your camera.</li>
-          <li>On iPhone: open its <b>More</b> tab, then Share, then <b>Add to Home Screen</b>. You never scan again.</li>
-        </ol>
-        <p class="warn" id="blocked" hidden>Windows Firewall is blocking your phone from reaching this laptop. On the laptop, click the Lumen icon in the system tray (bottom right, you may need the ^ arrow), then <b>Fix phone connection</b>, and approve the Windows prompt.</p>
-        <p class="url" id="url"></p>
-        <p class="url" id="stable-row"><span class="small">Address that survives IP changes:</span><br><span id="stable"></span></p>
-        <p class="small"><kbd>Esc</kbd> to close</p>
+  <main>
+    <section class="hero" id="hero">
+      <div class="hero-copy" id="heroCopy">
+        <div class="kicker" id="heroKicker">LUMEN SPOTLIGHT</div>
+        <h1 id="heroTitle">Your screen. Your universe.</h1>
+        <div class="meta" id="heroMeta"></div>
+        <p id="heroDescription">Start an app or ask Jarvis what to watch.</p>
+        <div class="hero-actions"><span class="primary"><b>▶</b> <span id="heroAction">Press OK to watch</span></span><span>Say “Yo Jarvis…”</span></div>
       </div>
-    </div>
+      <div class="jarvis-reply" id="jarvisReply" hidden><span>J</span><p></p></div>
+    </section>
+    <section class="shelves" id="shelves"></section>
+  </main>
+  <footer><div id="hints"><kbd>←↑↓→</kbd> Navigate <kbd>OK</kbd> Open <kbd>⌂</kbd> Home</div><div class="system-line"><i></i><span>ARC LINK</span><b id="systemLine">SYSTEM READY</b></div></footer>
+  <div class="pairing" id="pairing" hidden>
+    <div class="pair-card"><div class="qr" id="qr"></div><div><div class="kicker">SECURE REMOTE LINK</div><h2>Pair your phone</h2><p>Connect to the same Wi-Fi and scan this code. Save it to your Home Screen once and Lumen remembers you.</p><div class="pair-url" id="pairUrl"></div><p class="warning" id="blocked" hidden>Windows Firewall is blocking the phone. Use the Lumen tray menu on the laptop and choose Fix phone connection.</p><small>Press Back to close</small></div></div>
   </div>
-
   <div class="toast" id="toast"></div>
   <script src="app.js"></script>
 </body>

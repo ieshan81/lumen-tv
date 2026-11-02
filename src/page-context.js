@@ -20,8 +20,10 @@ function readPageContext() {
     const label = active.getAttribute('aria-label') || active.labels?.[0]?.textContent || active.getAttribute('placeholder') || (type === 'password' ? 'Password' : 'Type on your TV');
     input = { fieldId: fields.nodes.get(active), type, label: String(label).trim().slice(0, 100), multiline: active.tagName === 'TEXTAREA' || active.isContentEditable, autocomplete: active.autocomplete || '' };
   }
-  if (!editable && active && active !== document.body && active.matches('a,button,[role="button"],[role="tab"],[tabindex]')) {
-    const label = active.getAttribute('aria-label') || active.querySelector('h3,h2')?.textContent || active.getAttribute('title') || active.textContent;
+  const shellFocus = window.__lumenTVFocusedElement;
+  const focusedControl = !editable && shellFocus?.isConnected ? shellFocus : active;
+  if (!editable && focusedControl && focusedControl !== document.body && focusedControl.matches('a,button,[role="button"],[role="tab"],[tabindex]')) {
+    const label = focusedControl.getAttribute('aria-label') || focusedControl.querySelector('h3,h2')?.textContent || focusedControl.getAttribute('title') || focusedControl.textContent;
     if (label?.trim()) focus = { label:label.trim().replace(/\s+/g,' ').slice(0,100) };
   }
   const videos = Array.from(document.querySelectorAll('video,audio')).filter(v => {

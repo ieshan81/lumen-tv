@@ -18,8 +18,8 @@ function installTvShell(origins) {
       html.lumen-tv body{font-family:Outfit,'Segoe UI',system-ui,sans-serif!important;background:var(--tv-bg);color:var(--tv-fg)}
       html.lumen-tv :is(.navbar,.watch-nav){border-bottom:1px solid #ffffff12;background:#090b11eb;backdrop-filter:blur(18px)}
       html.lumen-tv :is(button,.btn,a[role=button],input,select){border-radius:14px;min-height:48px}
-      html.lumen-tv :is(a,button,input,select,textarea,[tabindex]):focus{outline:3px solid white!important;outline-offset:5px;box-shadow:0 0 0 8px #a99bff35!important}
-      html.lumen-tv :is(.movie-card,.media-card,.poster-card):focus-within{transform:scale(1.035)}
+      html.lumen-tv :is(a,button,input,select,textarea,[tabindex]):is(:focus,[data-lumen-focus="true"]){outline:3px solid white!important;outline-offset:5px;box-shadow:0 0 0 8px #a99bff35!important}
+      html.lumen-tv :is(.movie-card,.media-card,.poster-card):has([data-lumen-focus="true"]),html.lumen-tv :is(.movie-card,.media-card,.poster-card):focus-within{transform:scale(1.035)}
       html.lumen-tv .media-card>a{display:block;border-radius:12px;scroll-margin:5vh 3vw}
       html.lumen-tv :is(a,button,[tabindex]){scroll-margin:5vh 3vw}
       html.lumen-tv .header-search-cluster{height:auto;min-height:56px}
@@ -55,11 +55,32 @@ function installTvShell(origins) {
     let lastScope = document;
     let beforeDialog = null;
     let lastPath = location.pathname + location.search;
+    let visualFocus = null;
+    const editable = node => !!node && (node.matches('input,textarea,select') || node.isContentEditable);
+    function remember(node) {
+      if (visualFocus && visualFocus !== node) visualFocus.removeAttribute('data-lumen-focus');
+      visualFocus = node;
+      window.__lumenTVFocusedElement = node;
+      node.setAttribute('data-lumen-focus', 'true');
+      memory.set(location.pathname + location.search, node.id || node.getAttribute('href') || node.getAttribute('aria-label'));
+    }
     function focus(node) {
       if (!node) return;
       if (node.tabIndex < 0) node.tabIndex = 0;
-      node.focus({ preventScroll:true });
+      remember(node);
+      // Chromium displays an unavoidable browser-chrome URL bubble for a natively
+      // focused link. Keep links visually focused and activate them ourselves so
+      // the projector never shows that link preview. Form fields and buttons keep
+      // native focus so typing and website keyboard behavior remain intact.
+      if (node.matches('a[href]')) {
+        if (document.activeElement === node) node.blur();
+      } else node.focus({ preventScroll:true });
       node.scrollIntoView({ block:'nearest', inline:'nearest', behavior:'instant' });
+    }
+    function currentFocus(root = scope()) {
+      if (visualFocus?.isConnected && root.contains(visualFocus) && visible(visualFocus)) return visualFocus;
+      const active = document.activeElement;
+      return active && active !== document.body && active.isConnected && root.contains(active) && visible(active) ? active : null;
     }
     function ensureFocus() {
       const video = document.querySelector('video');
@@ -70,7 +91,7 @@ function installTvShell(origins) {
       // the catalog behind the movie. Explicit D-pad navigation and dialogs still work.
       if (cinema && !document.querySelector('dialog[open],[role="dialog"]:not([hidden]),[aria-modal="true"]:not([hidden]),[data-lumen-site-menu="true"]')) return;
       const root = scope();
-      let active = document.activeElement;
+      let active = currentFocus(lastScope);
       const path = location.pathname + location.search;
       const pathChanged = path !== lastPath;
       lastPath = path;
@@ -79,8 +100,8 @@ function installTvShell(origins) {
         else if (root === document && beforeDialog?.isConnected && visible(beforeDialog)) focus(beforeDialog);
         lastScope = root;
       }
-      active = document.activeElement;
-      if (!pathChanged && active && active !== document.body && active.isConnected && root.contains(active) && visible(active)) return;
+      active = currentFocus(root);
+      if (!pathChanged && active) return;
       const choices = nodes(root);
       const saved = memory.get(path);
       const remembered = saved && choices.find(node => saved === (node.id || node.getAttribute('href') || node.getAttribute('aria-label')));
@@ -89,8 +110,15 @@ function installTvShell(origins) {
     }
     document.addEventListener('focusin', event => {
       const node = event.target;
-      if (node.matches('input,textarea,select') || node.isContentEditable) return;
-      memory.set(location.pathname + location.search, node.id || node.getAttribute('href') || node.getAttribute('aria-label'));
+      if (editable(node)) {
+        if (visualFocus) visualFocus.removeAttribute('data-lumen-focus');
+        visualFocus = null;
+        window.__lumenTVFocusedElement = null;
+        return;
+      }
+      if (!node.matches(selector) || !visible(node)) return;
+      remember(node);
+      if (node.matches('a[href]')) node.blur();
     });
     let frame = 0;
     const refresh = () => { if (!frame) frame = requestAnimationFrame(() => { frame=0; ensureFocus(); }); };
@@ -107,15 +135,21 @@ function installTvShell(origins) {
         const search = Array.from(document.querySelectorAll('button[aria-label="Close search"]')).find(visible);
         if (search) { search.click(); return true; }
         if (scope() !== document) return 'escape';
-        const active = document.activeElement;
+        const active = currentFocus();
         if (active?.matches('input,textarea') || active?.isContentEditable) { active.blur(); refresh(); return true; }
         return false;
       }
     };
     document.addEventListener('keydown', event => {
+      const active = currentFocus();
+      if (event.key === 'Enter' && active && active !== document.activeElement && !editable(document.activeElement)) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        active.click();
+        return;
+      }
       if (!['ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(event.key) || event.altKey || event.ctrlKey || event.metaKey) return;
-      const active = document.activeElement;
-      if (active?.matches('input,textarea,select,iframe,video') || active?.isContentEditable) return;
+      if (document.activeElement?.matches('input,textarea,select,iframe,video') || document.activeElement?.isContentEditable) return;
       const choices = nodes(scope());
       if (!choices.length) return;
       const rect = active?.getBoundingClientRect();

@@ -1,12 +1,17 @@
 # Lumen TV
 
 Turn on the projector, select HDMI, and tap **Start Lumen** on your phone. Lumen waits in the Windows tray, puts a
-Google TV style home screen on the **Y9** display, switches sound to HDMI, and turns your phone into the remote.
+cinematic Lumen home screen on the projector display, switches sound to the selected output, and turns your phone into the remote.
 No HDMI-CEC or smart-projector features are required.
 
 Requires Windows, Microsoft Edge and Node.js. This repository includes the launcher, phone remote, shared TV layer,
 and JoJo/Movy integrations. The external websites and their catalogs remain operated by their respective providers.
 No streaming account, saved login, API credential or browser profile is included.
+
+The current home screen uses live TMDB artwork, a superhero-tech HUD and a flying focus marker. Movy's own Continue
+Watching rail is imported locally with exact episode routes and progress. **Jarvis** uses Windows' offline speech
+recognizer plus a deterministic intent engine—no resident LLM—to recommend titles, find recent YouTube uploads, and
+resume a named movie or episode. Network catalog metadata is cached; speech recognition sleeps outside TV mode.
 
 ```
  laptop  --HDMI-->  projector (Y9)          phone (same Wi-Fi)
@@ -27,6 +32,10 @@ The first run installs what Lumen needs automatically (needs Node.js). If you co
 ```
 ```
 
+For cinematic metadata, create a free TMDB API read token and run `node scripts/configure-tmdb.js`. Lumen protects it
+with Windows CurrentUser DPAPI in the ignored `cache/private` folder; the token is never placed in source or Git.
+Without it, the launcher and apps still work, but the live spotlight and Jarvis discovery stay in local-only mode.
+
 It lives in the system tray (purple play icon) and starts with Windows by default, so the phone remote stays
 available. Right-click the tray icon to change that behavior or access diagnostics.
 
@@ -40,11 +49,11 @@ the usual pop-up.
 
 1. **Pair your phone once.** Open Lumen from the tray, go to TV home > System > Phone remote, and scan the QR code with
    your camera. (The home screen always opens first; the QR only shows when you ask for it.)
-2. **Put the remote on your iPhone's Home Screen** so you never scan again: in the remote, open the **More** tab,
+2. **Put the remote on your iPhone's Home Screen** so you never scan again: in the remote, open **Room**,
    press *Switch to the address that never changes*, then Safari's Share button > **Add to Home Screen**.
    Use that hostname address when saving the shortcut. A shortcut saved with the laptop's numeric Wi-Fi address
    can stop working after the router assigns a different address; scan the current TV code to pair again.
-3. **Sign in once in Lumen's profile.** Open an app, then use phone **More > Sign in to current app**, or the tray's
+3. **Sign in once in Lumen's profile.** Open an app, then use phone **Room > Apps & accounts**, or the tray's
    **TV browser: sign in / manage passwords** item. A normal Edge window opens with the same dedicated profile used
    on the projector, including Edge's password-save prompt. Sign in there and choose Save if you want autofill.
    Cookies and local storage remain in `%LOCALAPPDATA%\LumenTV\edge-profile`; Lumen never copies passwords into its settings.
@@ -71,12 +80,13 @@ to your Microsoft account, never syncs, and has none of your extensions.
 | Launcher | Arrow keys + Enter, or the phone's D-pad. Esc / Back returns to the app you paused. |
 | Inside an app | Phone touchpad moves an on-screen mouse (kept on the projector), tap = click, two fingers = scroll, two-finger tap = right click. D-pad, keyboard, play/pause and Back work too. |
 | Anywhere | **Ctrl+Shift+H** or **Alt+Home** (or the phone's Home button) pauses the video and returns to the TV home. |
-| Phone > Type | Types text on the TV wherever the cursor is. |
-| TV text field | The Remote tab automatically presents a matching phone input. Live edits go only to that field; password values are never broadcast. Safari may require tapping the field to open its keyboard. |
+| Jarvis | Tap the orb on the Remote page or say “Yo Jarvis…” near the laptop. Ask for a genre/country, a YouTube creator, or a title from Continue Watching. |
+| TV text field | The Remote page automatically presents a matching phone input. Live edits go only to that field; password values are never broadcast. Safari may require tapping the field to open its keyboard. |
 | Play / Pause | Uses Windows' headset media key, rather than sending Space into a form. The icon follows the actual detected player state, including embedded frames. |
-| Phone > More > Audio & volume | Choose an active Windows output, such as HDMI, speakers or headphones. Lumen verifies the change and remembers the device for the next TV session. Refresh the list after connecting a device. |
+| Phone > Room > Audio & volume | Choose an active Windows output, such as HDMI, speakers or headphones. Lumen verifies the change and remembers the device for the next TV session. Refresh the list after connecting a device. |
 | Volume display | Shows the measured Windows volume on the projector. Auto-hide is on by default; switch it off to keep the display visible, then use Hide volume display to dismiss it. |
-| Sleep timer | TV home > System > Sleep timer (or the phone's *More* tab). Pauses, closes the app, leaves TV mode and stops the video signal so the projector can go to standby. |
+| Phone > Room > Four-point Halo | Select each cloth corner, align its precision crosshair, and use the unused projector overspill as a picture-reactive Halo. |
+| Sleep timer | Phone **Room > TV mode & timer**. Pauses, closes the app, leaves TV mode and stops the video signal so the projector can go to standby. |
 
 When the projector is unplugged (or you pick *Exit TV mode*) everything is put back: the browser closes cleanly,
 the screen can sleep again, and sound returns to the device you were using.
@@ -99,38 +109,6 @@ into the wrong window. The launcher and the Home button work the same way. The o
 with an `exe` tile (like VLC): that uses normal keyboard input, so it needs to be the focused window. Play/Pause and
 Play/Pause can use Windows media keys, like headset controls. Volume uses Windows Core Audio and reports the actual
 selected output's level; the projector's own hardware volume remains controlled by its native remote.
-
-### Calibrate the projector picture
-
-Open **More > Projector picture > Calibrate picture** on the phone. The wizard can start TV mode if necessary,
-pauses the current app, and shows a numbered test chart on the selected projector. Darken the room, use a neutral
-projector preset and disable Night Light/automatic picture changes before tuning.
-
-1. Select **Open phone camera** and photograph the complete chart, with flash off and the phone outside the beam.
-   The native camera/photo picker works with the existing local HTTP remote; continuous camera streaming is not required.
-2. On the photo, mark crosses **1, 2, 3, 4** in order and select **Analyze chart**. The phone compensates for perspective
-   and checks grayscale separation, clipping, patch consistency and primary-color alignment.
-3. A usable capture offers a conservative **Preview camera estimate**. Alternatively adjust red/green/blue gain and
-   midtone brightness manually, then select **Preview adjustment**.
-4. The chart disappears so you can compare the real output with **Original / Adjusted**. Select **Save projector profile**
-   to keep the correction, or Cancel to restore the preceding settings. An unsaved preview reverts after two minutes;
-   inactive chart setup expires after ten minutes. **Reset picture profile** removes the saved correction.
-
-Photos are processed on the phone and discarded when the wizard closes. Only 16 small numeric patch readings are
-sent over the authenticated local connection. Profiles contain bounded adjustment values and the projector identity;
-they are stored under the Git-ignored cache and reapplied to that projector on subsequent TV sessions.
-
-This is approximate picture tuning, not a certified colorimeter measurement. Camera processing can hide or create
-color casts; the estimate adjusts gains conservatively and does not infer an absolute white point, color gamut or
-display gamma. Compare the result by eye before saving. Moving the projector, changing the wall/screen, lighting,
-picture preset or Windows color settings can require a new setup.
-
-The Windows backend captures the existing output curves, checks that Advanced Color/HDR is off, targets the chosen
-display's hardware identity, verifies readback, checks other displays for unwanted changes, and restores the baseline
-when TV mode exits. A local recovery journal and worker shutdown restore unfinished changes. Unsupported drivers,
-HDR/Advanced Color and interference from other color settings disable software preview while keeping the reference
-chart available for manual projector adjustment. Windows gamma-ramp APIs have driver and color-management limitations;
-see [Microsoft's documentation](https://learn.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-setdevicegammaramp).
 
 ### Streaming picture quality
 
@@ -202,6 +180,8 @@ Icons are downloaded once per site (just the domain goes to Google's favicon ser
 | `audio.switchToProjector` | `true` | Use the projector's audio while in TV mode, then restore. `audio.deviceMatch` picks a different device by name. |
 | `audio.deviceId` | unset | Exact Windows output chosen in More. A disconnected saved output is reported rather than silently selecting another device. |
 | `audio.volumeAutoHide` | `true` | Hide the TV volume display after about 2 seconds. When false, use Hide volume display to dismiss it. |
+| `halo` | off; four corners at 8% inset | Saved cloth quadrilateral, Halo brightness and enabled state. Configure it from phone **Room > Four-point Halo**. |
+| `assistant` | enabled; local speech | Enables the offline Windows listener and on-demand speech replies. No LLM process is loaded. |
 | `homeHotkeys` | `["Ctrl+Shift+H","Alt+Home"]` | Global "go home" keys. |
 | `remote.port` / `remote.token` | `4321` / random | The phone remote's port and secret. Delete the token line to get a new one. |
 | `remote.projectorWaitSeconds` | `18` | How long the Start button waits for Windows to expose Y9 after enabling Extend mode. |
@@ -219,7 +199,7 @@ do not forward its port to the internet.
 
 - **Laptop lid closed?** Windows normally sleeps when you close the lid. To keep it running (while plugged in), run once:
   `powercfg /setacvalueindex SCHEME_CURRENT SUB_BUTTONS LIDACTION 0` then `powercfg /setactive SCHEME_CURRENT`
-- **Waking up after the sleep timer:** the phone remote still works. Open it and press *More > Start TV mode*.
+- **Waking up after the sleep timer:** the phone remote still works. Open it and press *Room > Start Lumen*.
 - **YouTube ads:** blocking is best effort. YouTube changes things now and then and runs its own anti-ad-blocker
   checks, so if ads or a warning ever come back, the code is in `src/adblock.js`. For other sites, add
   `"adblock": true` to that tile, or manage extensions in the TV browser (tray > *TV browser: sign in / manage passwords*).
@@ -235,8 +215,36 @@ do not forward its port to the internet.
 `main.js` ties it together. `src/displays.js` finds the Y9 and (via WMI) spots a mirrored projector. `src/browser.js`
 launches Edge with a debug port and controls it over the DevTools protocol (place it on the projector, pause video,
 close popups). `src/input.js` sends real keyboard and mouse input and focuses the browser window. `src/remote.js`
-serves the phone remote. `src/audio.js` + `scripts/audio.ps1` switch the sound output. `src/adblock.js` is the ad blocker. `ui/` is the launcher and
+serves the phone remote. `src/halo.js` owns the non-focusable overspill renderer and four-point geometry;
+`ui/halo.js` keeps one low-resolution Y9 capture stream open, samples thirty-six near-boundary zones and builds a
+three-depth blurred extension of the captured frame, while `src/ambient.js` owns live/fallback state.
+`src/catalog.js`, `src/watch-history.js`, `src/assistant.js` and `src/jarvis-listener.js` keep metadata, resume state and
+voice work isolated from the projection loop. `src/audio.js` + `scripts/audio.ps1` switch the sound output. `src/adblock.js` is the ad blocker. `ui/` is the launcher and
 `remote/` is the phone page.
+
+### Screen frame and Halo
+
+First remove the projector's digital zoom so its full raster overspills the cloth. Start Lumen, open phone **Room >
+Four-point Halo**, and press **Show crosshairs**. Select Top left, Top right, Bottom right, then Bottom left; for each
+one, use the arrow pad until the active crosshair sits exactly on that physical cloth corner.
+Fine, Normal and Coarse choose 0.25%, 0.5% and 1% movement. The saved quadrilateral is reapplied to both Lumen and
+its dedicated fullscreen Edge window, so neither an Edge title bar nor the Windows taskbar consumes projector pixels.
+Corner nudges, resets and saves update that homography in place; they do not drop Edge out of fullscreen to move its
+window. Volume overlays and pointer limits follow the quadrilateral's safe bounding box.
+
+The Halo is a separate click-through, focusless, always-on-top transparent window. It maintains one continuous
+projector stream, samples nine positions just inside each of the four content edges up to 30 times per second, applies
+calibrated saturation/brightness gain and fast-attack/slow-release smoothing, then interpolates those thirty-six colors.
+The actual captured frame is also processed at 480×270 in three depths: a close extension that carries the picture across
+the cloth edge, a medium bloom and a very broad low-frequency wall wash. This is intentionally closer to a blurred
+continuation of the image than an LED-style colored border. The outer alpha mask still fades completely to black before
+the projector raster ends. **Halo brightness** covers 4–100%, with 35% as the default.
+The content quadrilateral itself is punched completely transparent. If Windows returns a
+black/protected frame, Lumen fails over to the current app accent instead of presenting stale or invented video
+colors. The Halo window is excluded from its own Windows capture so light cannot recursively photograph and amplify
+itself. The crosshair guide appears only during corner setup.
+Disabling Halo restores ordinary fullscreen content; leaving TV mode hides the Halo. External programs launched
+through an `exe` tile manage their own geometry and may not honor the saved corners.
 
 ### Watch JoJo integration
 
@@ -254,6 +262,10 @@ title/control. Left/right stay in the same title rail and scroll it as needed. D
 them and restore it when closed. **Back** closes search/dialogs first, then returns through that app's history;
 from its root it returns to Lumen home. **Home** always returns to Lumen.
 
+TV links use a Lumen-owned visual focus ring rather than Chromium's native anchor focus. **OK** still activates the
+selected link exactly once, but Edge no longer exposes the link destination in a bottom-left browser-chrome bubble.
+Buttons and form fields retain native focus for correct website behavior and typing.
+
 Open Movy's **Search** and the phone typing panel appears for that field. Safari may still require a tap
 to open its software keyboard. **Navigate** and **Touchpad** are manual overrides; choose **Auto** to restore
 site-aware behavior. Standard playback detection, headset-style Play/Pause, ±10-second seeking and picture
@@ -262,13 +274,15 @@ buttons use supported site hooks or the actual player DOM; controls that are abs
 
 Movy is an external website, not a bundled native Netflix client. Its availability, catalog, player controls
 and source quality can change. Lumen does not download its media or replace its player providers. During inspection,
-the site opened an unsolicited extension-install ad. Lumen blocks popups, the observed ad hosts and off-origin
-top-level redirects for this tile. Do not install extensions advertised by those popups. If an external account
-flow is needed, use **More > Sign in to current app**, which opens the normal dedicated Edge profile.
+the site injected a sandboxed `srcdoc` frame styled to imitate a browser dialog and advertise Opera GX. Lumen rejects
+that payload before the frame renders, watches for reinsertion, locks popup/dialog APIs at document start, blocks the
+observed ad hosts and rejects off-origin top-level redirects for this tile. Do not install extensions advertised by
+those popups. If an external account
+flow is needed, use **Room > Apps & accounts**, which opens the normal dedicated Edge profile.
 
 ### Phone haptics
 
-**More > Haptic feedback** controls vibration on that phone only, with a **Test haptics** button. Supported
+**Room > Haptics & phone app** controls vibration on that phone only, with a **Test haptics** button. Supported
 browsers use short navigation ticks, firmer OK/Play/Pause/Home taps and a double pulse for Start. Touchpad taps
 also give feedback, without buzzing continuously while dragging. Rapid duplicate events are throttled; switching
 the option off or hiding the page cancels vibration. The preference survives a phone-page reload.
@@ -299,7 +313,7 @@ because the remote detects these controls.
 
 Lumen now combines active-screen names with Windows monitor hardware identity and remembers the confirmed
 projector in `cache/projector-identity.json`. This tolerates a generic display label or changed screen ID when
-Windows still exposes the same monitor hardware. Ambiguous matches are not guessed. Under phone **More >
+Windows still exposes the same monitor hardware. Ambiguous matches are not guessed. Under phone **Room >
 Projector recognition**, choose an external display and **Remember this screen** if necessary. Switching to a
 different screen closes the current app after confirmation. The existing projector startup preference is preserved.
 
@@ -309,7 +323,7 @@ rechecks placement; a sustained disconnection still exits TV mode and restores t
 Volume Up/Down/Mute now use the Windows audio endpoint and show a bottom-center TV overlay with the measured
 percentage, mute state and output-device name. The overlay is click-through, does not take focus from the player,
 and hides after about two seconds. Changes from laptop/headset volume controls are also observed during TV mode.
-The phone shows the same level. **More > Projector recognition > Show volume on TV** displays the current reading
+The phone shows the same level. **Room > Audio & volume > Show volume on TV** displays the current reading
 without changing it. Unavailable audio produces an error state, never a guessed percentage.
 
 This is Windows output volume, not the projector's separate IR-remote amplifier setting, and does not prove that

@@ -42,6 +42,23 @@ test('play/pause uses exactly one headset media key without sending Space', asyn
   assert.equal(keys,1);
 });
 
+test('projector placement uses true fullscreen so Windows chrome and the taskbar stay hidden',async()=>{
+  const browser=new TvBrowser({debugPort:0,profileDir:os.tmpdir()});
+  browser.mainTargetId='fixture';browser.pageSession='session';
+  let current={windowState:'normal',left:0,top:0,width:800,height:600};
+  const updates=[];
+  browser.cdp={send:async(method,params)=>{
+    if(method==='Browser.getWindowForTarget')return{windowId:7};
+    if(method==='Browser.getWindowBounds')return{bounds:{...current}};
+    if(method==='Browser.setWindowBounds'){updates.push(params.bounds);current={...current,...params.bounds};return{};}
+    if(method==='Page.bringToFront')return{};
+    throw new Error(`Unexpected CDP call: ${method}`);
+  }};
+  const display={x:1920,y:0,width:1920,height:1080};
+  await browser.place(display,{fullscreen:true});
+  assert.deepEqual(updates.at(-1),{windowState:'fullscreen'});
+});
+
 test('close waits for its Edge process after the debugging port disappears', async () => {
   const browser = new TvBrowser({ debugPort:0, profileDir:os.tmpdir() });
   const child = new EventEmitter();
@@ -88,6 +105,11 @@ test('Edge retains login storage and reports typing and media inside another ori
   const tile = {id:'movy',tvShell:true,lockNavigation:true,name:'Fixture',url:`http://127.0.0.1:${server.address().port}/`,blockPopups:false};
   await browser.open(tile);
   await until(async () => (await browser.evaluate('document.readyState')) === 'complete', 'Fixture did not load');
+  const frame={enabled:true,mode:'app',intensity:.2,points:[{x:.1,y:.08},{x:.9,y:.12},{x:.88,y:.9},{x:.12,y:.86}]};
+  await browser.setProjectorLayout(frame);
+  const transformed=await browser.evaluate(`({style:!!document.querySelector('#lumen-projector-layout'),transform:getComputedStyle(document.body).transform,rect:(()=>{const r=document.body.getBoundingClientRect();return{x:r.x,y:r.y,width:r.width,height:r.height}})()})`);
+  assert.equal(transformed.style,true);assert.notEqual(transformed.transform,'none');assert.ok(transformed.rect.x>0&&transformed.rect.y>0,'Perspective frame must inset the page from the projector raster');
+  await browser.setProjectorLayout(null);assert.equal(await browser.evaluate(`!document.querySelector('#lumen-projector-layout')`),true);
   // A parent hook that cannot see its embedded player must not swallow media commands.
   await browser.evaluate('window.LumenTV={getState:()=>({page:"browse",duration:0}),togglePlay(){},seekBy(){}}');
   assert.equal(await browser.evaluate('document.documentElement.classList.contains("lumen-tv")'),true);

@@ -10,6 +10,7 @@
   let phoneStorage;
   try { phoneStorage = localStorage; } catch { /* restricted/private browser */ }
   let manualPad = '';
+  let padMode = 'dpad';
   try { manualPad = phoneStorage?.getItem('lumen-pad') || ''; } catch { /* storage can be denied */ }
   let appsSignature = '';
   let focusedFieldId = '';
@@ -17,8 +18,11 @@
   let liveEditTimer = null;
   let displaySignature = '';
   let audioSignature = '';
+  let irSignature = '';
+  let haloPreviewTimer = null;
+  let haloSelectedPoint = 0;
   const haptics = window.createLumenHaptics({ navigator, storage:phoneStorage, visible:() => document.visibilityState === 'visible' });
-  const calibration = typeof window.createLumenCalibration==='function' ? window.createLumenCalibration({send,toast}) : {render(){ $('calibratePicture').disabled=true; $('pictureProfileNote').textContent='Restart Lumen to load picture setup.'; }};
+  $('haloDot').closest('details')?.classList.add('halo-card');
 
   function connected() { return ws && ws.readyState === WebSocket.OPEN; }
   function send(msg) {
@@ -132,6 +136,17 @@
     else $('status').textContent = state.running ? `Watching ${state.running.name}` : 'TV mode is active';
   }
 
+  function renderAssistant() {
+    const assistant = state?.assistant || {};
+    const voice = assistant.voice || {};
+    const listening = assistant.status === 'listening' || voice.armed;
+    $('assistantMic').classList.toggle('listening', listening || assistant.status === 'thinking');
+    $('assistantMic').disabled = assistant.status === 'thinking' || !connected();
+    $('assistantMessage').textContent = assistant.status === 'thinking' ? 'Thinking…'
+      : listening ? 'Listening on the laptop. Say your request now.'
+        : assistant.message || (voice.error ? `Voice unavailable: ${voice.error}. Typed requests still work.` : 'Tap the orb, then speak—or type a request.');
+  }
+
   function renderPower() {
     const off = state.mode === 'off';
     const projector = state.projector || {};
@@ -153,6 +168,7 @@
     $$('[data-action="enter"]').forEach((button) => { button.disabled = !!state.starting || !connected() || !off; });
     $('exit').hidden = off;
     $('enterMore').hidden = !off;
+    $('projectorQuick').hidden=false;
   }
 
   function renderNowPlaying() {
@@ -217,6 +233,9 @@
     $('volumeReadout').hidden=!state.volume;
     $('volumeReadout').textContent=state.volume ? state.volume.muted ? `Muted · level ${state.volume.percent}%` : `Volume ${state.volume.percent}%` : '';
     document.querySelector('[data-media="mute"]').setAttribute('aria-pressed',String(!!state.volume?.muted));
+    const target=state.volumeTarget||{kind:'windows',label:state.volume?.name||'Windows audio'};
+    $('volumeTarget').textContent=target.kind==='projector'?`Volume controls projector speaker · ${target.label}`:`Volume controls Windows · ${target.label}`;
+    $('volumeTarget').classList.toggle('projector',target.kind==='projector');
   }
 
   function renderApps() {
@@ -265,8 +284,8 @@
   }
 
   function renderState() {
-    calibration.render(state);
     renderStatus();
+    renderAssistant();
     renderPower();
     renderNowPlaying();
     renderApps();
@@ -274,13 +293,24 @@
     renderSleep();
     renderDisplayRecognition();
     renderAudioSettings();
+    renderIr();
+    renderGalaxy();
+    renderHalo();
     renderKeyboard();
     setPad(manualPad || (state.mode === 'home' ? 'dpad' : state.navigation || 'touch'), false);
     renderControlHint();
-    $('contextLabel').textContent = state.input ? 'TYPE ON YOUR TV' : state.media ? 'NOW PLAYING' : 'BROWSE YOUR TV';
+    $('contextLabel').textContent = padMode==='projector'?'PROJECTOR IR':state.input ? 'TYPE ON YOUR TV' : state.media ? 'NOW PLAYING' : 'BROWSE YOUR TV';
     $('account').disabled = !state.running;
     document.body.dataset.mode = state.media ? 'playing' : state.mode;
   }
+
+  $('assistantMic').addEventListener('click', () => send({ t:'assistant', action:'arm' }));
+  $('assistantForm').addEventListener('submit', event => {
+    event.preventDefault();
+    const text = $('assistantInput').value.trim();
+    if (!text) return;
+    if (send({ t:'assistant', action:'query', text })) $('assistantInput').value = '';
+  });
   function renderAudioSettings(){
     const devices=state.audioDevices||[];
     const signature=JSON.stringify(devices);
@@ -299,6 +329,56 @@
   $('audioOutput').addEventListener('change',()=>send({t:'audio',action:'select',id:$('audioOutput').value}));
   $('refreshAudio').addEventListener('click',()=>send({t:'audio',action:'refresh'}));
   $('volumeAutoHide').addEventListener('change',()=>send({t:'volume-preferences',autoHide:$('volumeAutoHide').checked}));
+  function renderIr(){
+    const ir=state.ir||{status:'loading',remotes:[],buttons:[]};
+    const ready=ir.status==='ready';
+    $('irDot').classList.toggle('ready',ready);
+    $('irStatus').textContent=ir.error||(ir.status==='loading'?'Connecting to the IR hub…':ready?`${ir.remoteName||'Projector remote'} is ready${ir.lastButton?` · ${ir.lastButton} sent`:''}`:'Choose the saved remote that controls the projector.');
+    const signature=JSON.stringify({remotes:ir.remotes,buttons:ir.buttons,remoteName:ir.remoteName});
+    if(signature!==irSignature){
+      irSignature=signature;$('irRemote').textContent='';
+      for(const remote of ir.remotes||[]){const option=document.createElement('option');option.value=remote.id;option.textContent=remote.name;option.selected=remote.selected;$('irRemote').appendChild(option);}
+      if(!ir.remotes?.length){const option=document.createElement('option');option.textContent='No projector remote found';$('irRemote').appendChild(option);}
+      $('irButtons').textContent='';
+      for(const button of ir.buttons||[]){const item=document.createElement('button');item.type='button';item.className=`ir-button ir-${button.id}`;item.dataset.ir=button.id;item.textContent=button.label;item.addEventListener('click',()=>send({t:'ir',action:'press',button:button.id}));$('irButtons').appendChild(item);}
+    }
+    $('irRemote').disabled=ir.busy||!ir.remotes?.length;
+    $('refreshIr').disabled=ir.busy||ir.status==='loading';
+    $$('#irButtons button').forEach(button=>button.disabled=ir.busy||!ready);
+    $$('[data-ir-main]').forEach(button=>{button.disabled=ir.busy||!ready||!ir.buttons?.some(item=>item.id===button.dataset.irMain);});
+    $$('[data-galaxy]').forEach(button=>{button.disabled=ir.busy||!ready;});
+    const galaxy=state.galaxy||{};
+    const galaxyText=galaxy.enabled&&galaxy.night&&galaxy.status==='synced'?` · Galaxy ${galaxy.desired}`:'';
+    $('projectorQuickStatus').textContent=ir.error||(ready?`${ir.hubName||'IR hub'} ready${galaxyText} · power state is not reported`:'Connecting to the IR hub…');
+  }
+  $('irRemote').addEventListener('change',()=>send({t:'ir',action:'select',remoteId:$('irRemote').value}));
+  $('refreshIr').addEventListener('click',()=>send({t:'ir',action:'refresh'}));
+  $$('[data-ir-main]').forEach(button=>button.addEventListener('click',()=>send({t:'ir',action:'press',button:button.dataset.irMain})));
+  $$('[data-galaxy]').forEach(button=>button.addEventListener('click',()=>send({t:'galaxy-command',button:button.dataset.galaxy})));
+  function renderGalaxy(){
+    const galaxy=state.galaxy||{enabled:false,night:false,status:'loading',start:'20:00',end:'08:00'};
+    $('galaxyEnabled').checked=!!galaxy.enabled;$('galaxyStart').value=galaxy.start||'20:00';$('galaxyEnd').value=galaxy.end||'08:00';
+    const synced=galaxy.status==='synced';$('galaxyDot').classList.toggle('ready',synced);
+    $('galaxyStatus').textContent=galaxy.error||(galaxy.status==='manual'?`Manual Galaxy ${galaxy.desired} sent · automatic sync resumes in 30 minutes`:galaxy.status==='sending'?`Sending Galaxy ${galaxy.desired}…`:galaxy.status==='waiting'?'Waiting for the HDMI signal to settle…':synced?`Night sync active · Galaxy ${galaxy.desired} command confirmed by Tuya`:galaxy.enabled&&!galaxy.night?'Outside the night window · no changes are made':galaxy.enabled?'Watching for Y9…':'Galaxy night sync is off');
+  }
+  function saveGalaxy(){send({t:'galaxy-settings',enabled:$('galaxyEnabled').checked,start:$('galaxyStart').value,end:$('galaxyEnd').value});}
+  $('galaxyEnabled').addEventListener('change',saveGalaxy);$('galaxyStart').addEventListener('change',saveGalaxy);$('galaxyEnd').addEventListener('change',saveGalaxy);
+  function haloDraft(){const halo=state.halo||{};return{enabled:$('haloEnabled').checked,mode:'app',intensity:Number($('haloIntensity').value)/100,points:halo.points||[{x:.08,y:.08},{x:.92,y:.08},{x:.92,y:.92},{x:.08,y:.92}]};}
+  function renderHalo(){
+    const halo=state.halo||{enabled:false,mode:'app',intensity:.35,points:[{x:.08,y:.08},{x:.92,y:.08},{x:.92,y:.92},{x:.08,y:.92}],guide:false,dynamic:{status:'off'}};
+    $('haloEnabled').checked=!!halo.enabled;if(document.activeElement!==$('haloIntensity'))$('haloIntensity').value=Math.round((halo.intensity||.35)*100);$('haloIntensityValue').textContent=`${Math.round(Number($('haloIntensity').value))}%`;
+    haloSelectedPoint=Number.isInteger(halo.selectedPoint)?halo.selectedPoint:haloSelectedPoint;const names=['Top left','Top right','Bottom right','Bottom left'];
+    (halo.points||[]).forEach((point,index)=>{$(`haloPoint${index}`).textContent=`${(point.x*100).toFixed(2).replace(/\.00$/,'')}%, ${(point.y*100).toFixed(2).replace(/\.00$/,'')}%`;});
+    $$('[data-halo-point]').forEach(button=>button.classList.toggle('on',Number(button.dataset.haloPoint)===haloSelectedPoint));$('haloSelected').textContent=`Moving point ${haloSelectedPoint+1} · ${names[haloSelectedPoint]}`;
+    $('haloDot').classList.toggle('ready',!!halo.enabled);$('haloGuide').textContent=halo.guide?'Finish corner setup':'Show corner guide';
+    const dynamic=halo.dynamic||{status:'off'};$('haloStatus').textContent=halo.error||(halo.guide?`Corner guide visible · point ${haloSelectedPoint+1} selected`:halo.enabled&&dynamic.status==='live'?'Dynamic picture colors live · fullscreen perspective fit active':halo.enabled&&dynamic.status==='starting'?'Starting dynamic picture sampling…':halo.enabled?`${dynamic.error||'Picture sampling unavailable'} · using app-color fallback`:'Halo is off. Your four corners are saved.');
+  }
+  function sendHalo(action){send({t:'halo',action,...haloDraft()});}
+  const saveHalo=()=>{clearTimeout(haloPreviewTimer);sendHalo('save');};
+  $('haloEnabled').addEventListener('change',saveHalo);$('haloIntensity').addEventListener('input',()=>{$('haloIntensityValue').textContent=`${$('haloIntensity').value}%`;clearTimeout(haloPreviewTimer);haloPreviewTimer=setTimeout(()=>sendHalo('preview'),16);});$('haloIntensity').addEventListener('change',saveHalo);
+  $$('[data-halo-point]').forEach(button=>button.addEventListener('click',()=>{haloSelectedPoint=Number(button.dataset.haloPoint);$$('[data-halo-point]').forEach(item=>item.classList.toggle('on',item===button));$('haloSelected').textContent=`Moving point ${haloSelectedPoint+1} · ${['Top left','Top right','Bottom right','Bottom left'][haloSelectedPoint]}`;send({t:'halo',action:'select-point',point:haloSelectedPoint});}));
+  $$('[data-halo-nudge]').forEach(button=>{let delay,repeat;const stop=()=>{clearTimeout(delay);clearInterval(repeat);};const move=()=>{const[dx,dy]=button.dataset.haloNudge.split(',').map(Number),step=Number($('haloStep').value);send({t:'halo',action:'nudge',point:haloSelectedPoint,dx:dx*step,dy:dy*step});};button.addEventListener('pointerdown',event=>{event.preventDefault();move();delay=setTimeout(()=>{repeat=setInterval(move,120);},420);});['pointerup','pointerleave','pointercancel'].forEach(name=>button.addEventListener(name,stop));button.addEventListener('click',event=>{if(event.detail===0)move();});});
+  $('haloGuide').addEventListener('click',()=>{clearTimeout(haloPreviewTimer);send({t:'halo',action:'guide'});});$('haloReset').addEventListener('click',()=>{clearTimeout(haloPreviewTimer);send({t:'halo',action:'reset'});});
   function renderDisplayRecognition(){
     const projector=state.projector||{};
     $('displayRecognition').textContent=projector.reason|| (projector.connected?'Projector detected':'Connect the projector and select HDMI.');
@@ -362,6 +442,7 @@
     $$('.tab').forEach((tab) => tab.classList.toggle('active', tab.id === `tab-${name}`));
     const main = document.querySelector('main');
     main.scrollTop = 0;
+    document.scrollingElement.scrollTop = 0;
     if(name==='more')send({t:'audio',action:'refresh'});
   }
   $$('nav button').forEach((button) => button.addEventListener('click', () => showTab(button.dataset.tab)));
@@ -375,7 +456,9 @@
       } catch { /* a denied preference must not disable the remote */ }
     }
     if (which === 'auto') which = state?.mode === 'home' ? 'dpad' : state?.navigation || 'touch';
-    $('dpad').hidden = which !== 'dpad';
+    padMode=which;
+    $('remoteControls').dataset.padMode=which;
+    $('dpad').hidden = !['dpad','projector'].includes(which);
     $('touchpad').hidden = which !== 'touch';
     $$('#padseg button').forEach((button) => {
       const selected = button.dataset.pad === (manualPad || 'auto');
@@ -385,8 +468,8 @@
     renderControlHint();
   }
   function renderControlHint() {
-    const label = state?.mode === 'app' && state.focus?.label;
-    $('controlHint').textContent = $('dpad').hidden ? 'Drag to point · tap to click' : label ? `OK · ${label}` : 'Arrows to move · OK to open';
+    const label = state?.focus?.label;
+    $('controlHint').textContent = padMode==='projector'?'Arrows, OK, Back and Home control the projector':$('dpad').hidden ? 'Drag to point · tap to click' : label ? `OK · ${label}` : 'Arrows to move · OK to open';
     $('controlHint').title = label || '';
   }
   $$('#padseg button').forEach((button) => button.addEventListener('click', () => setPad(button.dataset.pad, true)));
@@ -399,15 +482,21 @@
       event.preventDefault();
       if (document.activeElement === $('liveText')) $('liveText').blur();
       fn();
-      if (repeatable) timer = setTimeout(() => { interval = setInterval(() => { haptics.trigger('selection'); fn(); }, 105); }, 360);
+      if (repeatable) timer = setTimeout(() => { const repeatMs=padMode==='projector'?360:105;interval = setInterval(() => { haptics.trigger('selection'); fn(); }, repeatMs); }, 360);
     });
     ['pointerup', 'pointerleave', 'pointercancel'].forEach((name) => element.addEventListener(name, stop));
     element.addEventListener('click', event => { if (event.detail === 0) fn(); });
   }
-  $$('[data-key]').forEach((button) => bind(button, () => send({ t: 'key', k: button.dataset.key }), button.dataset.repeat !== '0' && ['Up', 'Down', 'Left', 'Right', 'Backspace', 'Space'].includes(button.dataset.key)));
+  const projectorKeys={Up:'up',Down:'down',Left:'left',Right:'right',Enter:'ok',Back:'back'};
+  $$('[data-key]').forEach((button) => bind(button, () => {
+    const eligible=!!button.closest('#dpad')||(button.dataset.key==='Back'&&!!button.closest('.quick-row'));
+    if(padMode==='projector'&&eligible&&projectorKeys[button.dataset.key])send({t:'ir',action:'press',button:projectorKeys[button.dataset.key]});
+    else send({ t: 'key', k: button.dataset.key });
+  }, button.dataset.repeat !== '0' && ['Up', 'Down', 'Left', 'Right', 'Backspace', 'Space'].includes(button.dataset.key)));
   $$('[data-media]').forEach((button) => bind(button, () => send({ t: 'media', a: button.dataset.media }), button.dataset.repeat === '1'));
   $$('[data-site]').forEach((button) => bind(button, () => send({ t: 'site', action: button.dataset.site }), false));
-  [$('home'), $('homeButton')].forEach((button) => bind(button, () => send({ t: 'home' }), false));
+  bind($('home'),()=>send({t:'home'}),false);
+  bind($('homeButton'),()=>padMode==='projector'?send({t:'ir',action:'press',button:'home'}):send({t:'home'}),false);
 
   const pad = $('touchpad');
   let pending = { dx: 0, dy: 0, scroll: 0 };

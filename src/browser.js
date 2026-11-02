@@ -15,6 +15,24 @@ const { tvShellScript, usesTvShell } = require('./tv-shell');
 const { allowedOrigins, allowsNavigation } = require('./navigation-policy');
 const { SITE_ACTIONS,siteControlsExpression } = require('./site-controls');
 
+function projectorLayoutScript(layout){
+  const points=layout?.enabled&&Array.isArray(layout.points)?layout.points:null;
+  return `(() => {
+    const id='lumen-projector-layout', points=${JSON.stringify(points)};
+    if(!points){document.getElementById(id)?.remove();window.__lumenProjectorApply=null;return;}
+    const apply=()=>{
+      const w=Math.max(1,innerWidth),h=Math.max(1,innerHeight),p=points.map(v=>({x:v.x*w,y:v.y*h})),[p0,p1,p2,p3]=p;
+      const dx1=p1.x-p2.x,dx2=p3.x-p2.x,dx3=p0.x-p1.x+p2.x-p3.x,dy1=p1.y-p2.y,dy2=p3.y-p2.y,dy3=p0.y-p1.y+p2.y-p3.y,den=dx1*dy2-dx2*dy1;
+      if(Math.abs(den)<1e-8)return;
+      const g=(dx3*dy2-dx2*dy3)/den,hp=(dx1*dy3-dx3*dy1)/den,a=p1.x-p0.x+g*p1.x,b=p3.x-p0.x+hp*p3.x,c=p0.x,d=p1.y-p0.y+g*p1.y,e=p3.y-p0.y+hp*p3.y,f=p0.y;
+      const matrix=[a/w,d/w,0,g/w,b/h,e/h,0,hp/h,0,0,1,0,c,f,0,1].map(v=>Number(v.toFixed(10))).join(',');
+      const style=document.getElementById(id)||document.documentElement.appendChild(Object.assign(document.createElement('style'),{id}));
+      style.textContent='html{background:#000!important;overflow:hidden!important}body{width:100vw!important;height:100vh!important;margin:0!important;transform-origin:0 0!important;transform:matrix3d('+matrix+')!important;overflow:hidden!important}';
+    };
+    window.__lumenProjectorApply=apply;if(!window.__lumenProjectorResize){window.__lumenProjectorResize=true;addEventListener('resize',()=>window.__lumenProjectorApply?.(),{passive:true});}apply();
+  })()`;
+}
+
 const TV_USER_AGENT =
   'Mozilla/5.0 (PlayStation; PlayStation 4/12.00) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Safari/605.1.15';
 
@@ -135,6 +153,8 @@ class TvBrowser extends EventEmitter {
     this.siteActionContexts = new Map();
     this.siteCommandBusy = false;
     this.shellScriptId = null;
+    this.layoutScriptId = null;
+    this.projectorLayout = null;
     this.setupMode = false;
     this.title = '';
     this.url = '';
@@ -219,6 +239,8 @@ class TvBrowser extends EventEmitter {
       if (blocked) this.emit('navigation-blocked');
     } else if (method === 'Page.frameNavigated' && sessionId === this.pageSession && !params.frame.parentId) {
       this.mainFrameId = params.frame.id;
+    } else if(method==='Page.javascriptDialogOpening'){
+      popupCloser.onDialogOpening(this,sessionId);
     } else if (method === 'Target.targetCreated') {
       popupCloser.onTargetCreated(this, params.targetInfo);
     } else if (method === 'Target.targetInfoChanged') {
@@ -332,13 +354,15 @@ class TvBrowser extends EventEmitter {
   }
 
   /** Open (or switch to) a tile's site in fullscreen on the given display (DIP bounds). */
-  async open(tile, bounds) {
+  async open(tile, bounds,placeOptions={}) {
+    const projectorLayout=placeOptions.layout||null;
     const url = this.launchUrl(tile);
     const running = !!(await this._version());
     if (!running) {
       this.cdp = null;
       this.reset();
     }
+    this.projectorLayout=projectorLayout;
 
     let page = null;
     let launched = false; // Edge just opened this window pointing at the URL
@@ -365,7 +389,10 @@ class TvBrowser extends EventEmitter {
       this.pageSession = null;
     }
 
-    const switching = launched || !this.tile || this.tile.id !== tile.id;
+    const previousTile = this.tile;
+    // Content deep links reuse the Movy tile id. Compare the requested URL as
+    // well, otherwise selecting a title while Movy is already open is a no-op.
+    const switching = launched || !previousTile || previousTile.id !== tile.id || this.launchUrl(previousTile) !== url;
     this.tile = tile;
     this.setupMode = false;
     this.mainTargetId = page.targetId;
@@ -377,6 +404,7 @@ class TvBrowser extends EventEmitter {
       this.pageSession = sessionId;
       this.adScriptId = null;
       this.pointerScriptId = null;
+      this.layoutScriptId = null;
       this.pointer = null;
       this.view = null;
       this.frameSessions.clear();
@@ -398,6 +426,7 @@ class TvBrowser extends EventEmitter {
 
     await this._applyAdblock(tile);
     await this._applyTvShell(tile);
+    await this._applyProjectorLayout(this.projectorLayout);
     await this.cdp.send('Fetch.disable', {}, this.pageSession);
     const { frameTree } = await this.cdp.send('Page.getFrameTree', {}, this.pageSession);
     this.mainFrameId = frameTree.frame.id;
@@ -413,7 +442,7 @@ class TvBrowser extends EventEmitter {
       await this.cdp.send('Page.navigate', { url }, this.pageSession).catch(() => {});
     }
 
-    if (!this.headless) await this.place(bounds);
+    if (!this.headless) await this.place(bounds,placeOptions);
     await popupCloser.armPopupCloser(this);
     this.emit('title', this.status());
   }
@@ -445,11 +474,22 @@ class TvBrowser extends EventEmitter {
     await this.cdp.send('Runtime.evaluate', { expression: source }, this.pageSession).catch(() => {});
   }
 
-  /** Move the Edge window onto a display (DIP bounds) and make it fullscreen there. */
-  async place(bounds) {
+  async _applyProjectorLayout(layout){
+    this.projectorLayout=layout||null;
+    if(!this.pageSession)return;
+    if(this.layoutScriptId){await this.cdp.send('Page.removeScriptToEvaluateOnNewDocument',{identifier:this.layoutScriptId},this.pageSession).catch(()=>{});this.layoutScriptId=null;}
+    const source=projectorLayoutScript(this.projectorLayout),result=await this.cdp.send('Page.addScriptToEvaluateOnNewDocument',{source},this.pageSession);
+    this.layoutScriptId=result.identifier;
+    await this.cdp.send('Runtime.evaluate',{expression:source},this.pageSession).catch(()=>{});
+  }
+
+  async setProjectorLayout(layout){await this._applyProjectorLayout(layout);}
+
+  /** Move the Edge window into the requested projector content rectangle. */
+  async place(bounds,{fullscreen=true}={}) {
     if (!this.active || !bounds) return;
     const { windowId } = await this.cdp.send('Browser.getWindowForTarget', { targetId: this.mainTargetId });
-    const want = { left: bounds.x + 40, top: bounds.y + 40, width: bounds.width - 80, height: bounds.height - 80 };
+    const want = fullscreen?{left:bounds.x+40,top:bounds.y+40,width:bounds.width-80,height:bounds.height-80}:{left:bounds.x,top:bounds.y,width:bounds.width,height:bounds.height};
     const current = async () => (await this.cdp.send('Browser.getWindowBounds', { windowId })).bounds;
     const inside = (b) => b.left >= bounds.x - 8 && b.left < bounds.x + bounds.width && b.top >= bounds.y - 8 && b.top < bounds.y + bounds.height;
 
@@ -466,7 +506,7 @@ class TvBrowser extends EventEmitter {
       if (inside(now)) break;
     }
     if (!inside(now)) throw new Error(`Could not move the browser onto the projector (window is at ${now.left},${now.top})`);
-    await this.cdp.send('Browser.setWindowBounds', { windowId, bounds: { windowState: 'fullscreen' } });
+    if(fullscreen)await this.cdp.send('Browser.setWindowBounds', { windowId, bounds: { windowState: 'fullscreen' } });
     this.view = null; // the page just changed size
     await this.cdp.send('Page.bringToFront', {}, this.pageSession).catch(() => {});
   }
@@ -635,6 +675,24 @@ class TvBrowser extends EventEmitter {
     return !!(await this.evaluateMediaContext(expression));
   }
 
+  /** Seek to an absolute timestamp. Used by Continue Watching after a player becomes ready. */
+  async seekTo(seconds) {
+    if (!this.active) return false;
+    const position = Math.max(0, Number(seconds) || 0);
+    const expression = `(() => {
+      if (window.LumenTV && typeof window.LumenTV.seekTo === 'function') {
+        try { window.LumenTV.seekTo(${JSON.stringify(position)}); return true; } catch (e) {}
+      }
+      const videos = Array.from(document.querySelectorAll('video,audio'));
+      const video = videos.find(v => v.readyState > 0) || videos[0];
+      if (!video) return false;
+      video.currentTime = Math.max(0, Math.min(Number.isFinite(video.duration) ? Math.max(0, video.duration - 2) : Infinity, ${JSON.stringify(position)}));
+      return true;
+    })()`;
+    await this.interactionState();
+    return !!(await this.evaluateMediaContext(expression));
+  }
+
   async fullscreen() {
     if (!this.active) return false;
     await this.interactionState();
@@ -750,6 +808,44 @@ class TvBrowser extends EventEmitter {
     if (!this.active) return null;
     const { result } = await this.cdp.send('Runtime.evaluate', { expression, returnByValue: true }, this.pageSession);
     return result && result.value;
+  }
+
+  /** Import Movy's own Continue Watching rail without reading account credentials. */
+  async continueWatching() {
+    if (!this.active || this.tile?.id !== 'movy') return [];
+    const expression = `(() => {
+      const heading = Array.from(document.querySelectorAll('*')).find(node => node.children.length === 0 && node.textContent.trim() === 'Continue watching');
+      if (!heading) return [];
+      let section = heading;
+      for (let depth = 0; depth < 6 && section; depth++, section = section.parentElement) {
+        const links = Array.from(section.querySelectorAll('a[href*="/movie/"],a[href*="/tv/"]'));
+        if (links.length < 1) continue;
+        return links.slice(0, 20).map(anchor => {
+          const path = new URL(anchor.href, location.href).pathname.split('/').filter(Boolean);
+          const mediaType = path[0] === 'tv' ? 'tv' : path[0] === 'movie' ? 'movie' : '';
+          const id = Number(path[1]);
+          if (!mediaType || !Number.isSafeInteger(id)) return null;
+          const season = /^\\d+$/.test(path[2] || '') ? Number(path[2]) : null;
+          const episode = /^\\d+$/.test(path[3] || '') ? Number(path[3]) : null;
+          const title = anchor.querySelector('h3')?.textContent?.trim() || '';
+          const image = anchor.querySelector('img')?.src || '';
+          const progressBar = Array.from(anchor.querySelectorAll('[style]')).find(node => /width\\s*:\\s*[\\d.]+%/i.test(node.getAttribute('style') || ''));
+          const progress = Math.max(0, Math.min(1, (parseFloat(progressBar?.style.width || '0') || 0) / 100));
+          const clock = Array.from(anchor.querySelectorAll('div,span')).map(node => node.textContent.trim()).find(text => /^(?:\\d{1,2}:)?\\d{1,2}:\\d{2}$/.test(text)) || '';
+          const parts = clock.split(':').map(Number);
+          const position = parts.length === 3 ? parts[0] * 3600 + parts[1] * 60 + parts[2] : parts.length === 2 ? parts[0] * 60 + parts[1] : 0;
+          const duration = progress > .005 ? position / progress : 0;
+          const url = new URL(anchor.href, location.href).toString();
+          return { key:
+            mediaType + ':' + id + ':' + (season ?? '') + ':' + (episode ?? ''),
+            ref:mediaType + ':' + id, mediaType, id, title, series:mediaType === 'tv' ? title : '', season, episode,
+            url, position, duration, progress, artwork:image, updatedAt:Date.now(), source:'movy'
+          };
+        }).filter(Boolean);
+      }
+      return [];
+    })()`;
+    try { return await this.evaluate(expression) || []; } catch { return []; }
   }
 
   /** Process id of Edge's main (browser) process, used to focus its window. */

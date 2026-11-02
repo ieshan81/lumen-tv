@@ -8,5 +8,8 @@
   "remote": { "host": "0.0.0.0", "port": 4321, "token": "", "projectorWaitSeconds": 18 },
   "browser": { "path": "", "debugPort": 9333 },
   "sleepTimer": { "turnOffProjector": true },
+  "galaxyNightSync": { "enabled": true, "start": "20:00", "end": "08:00" },
+  "halo": { "enabled": false, "mode": "app", "intensity": 0.35, "points": [{ "x": 0.08, "y": 0.08 }, { "x": 0.92, "y": 0.08 }, { "x": 0.92, "y": 0.92 }, { "x": 0.08, "y": 0.92 }] },
+  "assistant": { "enabled": true, "wakeWords": ["Jarvis", "Lumen"], "speak": true },
   "fetchIcons": true
 }

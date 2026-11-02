@@ -19,6 +19,7 @@
     "lockNavigation": true,
     "allowedNavigationOrigins": ["https://movy.sx"],
     "blockPopups": true,
+    "blockDialogs": true,
     "adblock": true
   },
   {
