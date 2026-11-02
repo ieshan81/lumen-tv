@@ -15,7 +15,7 @@ const audio = require('./src/audio');
 const { TvBrowser } = require('./src/browser');
 const { VolumeMonitor } = require('./src/volume');
 const { VolumeOverlay } = require('./src/volume-overlay');
-const { HaloController, DEFAULT_HALO, normalizeHalo, parseHalo, contentBounds, nudgePoint } = require('./src/halo');
+const { HaloController, DEFAULT_HALO, normalizeHalo, parseHalo, contentBounds, nudgePoint, projectiveMatrix } = require('./src/halo');
 const { AmbientSampler } = require('./src/ambient');
 const { SITE_ACTIONS } = require('./src/site-controls');
 const { RemoteServer } = require('./src/remote');
@@ -133,6 +133,9 @@ async function viewState() {
     match: (settings.projector && settings.projector.match) || 'projector'
   };
   const irVolume=projectorIr?.state?.status==='ready'&&shouldUseIrVolume({volume:state.volume,audioDevices:state.audioDevices,projector:{...settings.projector,label:projectorState.label}});
+  const currentHalo=normalizeHalo(haloPreview||settings.halo);
+  const haloState={...currentHalo,guide:!!halo?.guide,selectedPoint:haloPoint,dynamic:ambient?{status:ambient.status,error:ambient.error}:{status:'off',error:''}};
+  if(currentHalo.enabled&&state.display?.bounds)haloState.layoutCss=projectiveMatrix(currentHalo,state.display.bounds.width,state.display.bounds.height).css;
   return {
     mode: state.mode,
     tiles: tiles.map((t) => ({ id: t.id, name: t.name, desc: t.desc, accent: t.accent, icon: state.icons[t.id] || null })),
@@ -152,7 +155,7 @@ async function viewState() {
     volume: state.volume,
     controls: state.controls,
     volumeOverlayVisible: !!volumeOverlay?.visible,
-    halo: {...normalizeHalo(haloPreview||settings.halo),guide:!!halo?.guide,selectedPoint:haloPoint,dynamic:ambient?{status:ambient.status,error:ambient.error}:{status:'off',error:''}},
+    halo: haloState,
     ir: projectorIr ? projectorIr.publicState() : {configured:false,status:'loading',remotes:[],buttons:[]},
     galaxy: galaxySync ? galaxySync.publicState() : {enabled:false,night:false,status:'loading',desired:null,start:'20:00',end:'08:00'},
     volumeTarget:{kind:irVolume?'projector':'windows',label:irVolume?(projectorIr.state.remoteName||'Projector speaker'):(state.volume?.name||state.audio?.name||'Windows audio')},

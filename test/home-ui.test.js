@@ -18,6 +18,7 @@ test('home uses a calm hearth layer without the superhero HUD', () => {
   const css = read('ui/style.css');
   const remote = read('remote/index.html');
   assert.match(html, /<canvas class="hearth" id="hearth"/);
+  assert.match(html, /class="projector-surface" id="projectorSurface"/);
   assert.match(html, /id="heroLogo"/);
   assert.ok(html.indexOf('ambience.js') < html.indexOf('app.js'), 'ambience must load before the launcher');
   assert.doesNotMatch(html, /<footer/);
@@ -35,6 +36,8 @@ test('movie art drives both the hero and its fireplace palette', () => {
   assert.match(source, /logoUrl=data\.logo\|\|''/);
   assert.match(source, /image:tile\.icon/);
   assert.match(source, /rowKind==='dock'.*app-icon/);
+  assert.match(source, /applyProjectorLayout\(state\.halo\)/);
+  assert.match(source, /surface\.style\.transform=css/);
   assert.doesNotMatch(source, /jet-active|systemLine/);
 
   const blue = new Uint8ClampedArray(8 * 4);

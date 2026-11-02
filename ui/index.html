@@ -7,6 +7,7 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+<div class="projector-surface" id="projectorSurface">
   <div class="backdrop" id="backdrop" aria-hidden="true"></div>
   <div class="wash" aria-hidden="true"></div>
   <canvas class="hearth" id="hearth" aria-hidden="true"></canvas>
@@ -33,6 +34,7 @@
     <div class="pair-card"><div class="qr" id="qr"></div><div><div class="pair-label">Remote connection</div><h2>Pair your phone</h2><p>Connect to the same Wi-Fi and scan this code. Save it to your Home Screen once and Lumen remembers you.</p><div class="pair-url" id="pairUrl"></div><p class="warning" id="blocked" hidden>Windows Firewall is blocking the phone. Use the Lumen tray menu on the laptop and choose Fix phone connection.</p><small>Press Back to close</small></div></div>
   </div>
   <div class="toast" id="toast"></div>
+</div>
   <script src="ambience.js"></script>
   <script src="app.js"></script>
 </body>
