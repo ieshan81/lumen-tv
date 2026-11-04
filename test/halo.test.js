@@ -12,8 +12,16 @@ test('stored rectangular alignments migrate before default corner settings can m
   assert.equal('frame' in migrated.halo,false);
 });
 
+test('old Y9 labels migrate to the product name while retaining the EDID alias',()=>{
+  const migrated=migrateStoredSettings({projector:{match:'Y9'}});
+  assert.equal(migrated.projector.match,'OWNKNEW');
+  assert.deepEqual(migrated.projector.aliases,['Y9']);
+});
+
 test('four-point settings migrate old edges and reject folded or collapsed geometry',()=>{
   assert.deepEqual(normalizeHalo(null),DEFAULT_HALO);
+  assert.equal(normalizeHalo({}).alwaysOn,true);
+  assert.equal(normalizeHalo({alwaysOn:false}).alwaysOn,false);
   assert.deepEqual(normalizeHalo({enabled:true,frame:{left:.1,top:.06,right:.12,bottom:.09}}).points,[{x:.1,y:.06},{x:.88,y:.06},{x:.88,y:.91},{x:.1,y:.91}]);
   assert.equal(validQuad([{x:.1,y:.1},{x:.9,y:.1},{x:.9,y:.9},{x:.1,y:.9}]),true);
   assert.equal(validQuad([{x:.1,y:.1},{x:.9,y:.9},{x:.9,y:.1},{x:.1,y:.9}]),false);
@@ -51,6 +59,6 @@ test('transparent Halo overlay never takes focus, resolves one continuous captur
   controller.win.webContents.emit('did-finish-load');
   assert.equal(controller.visible,true);assert.ok(calls.some(call=>call[0]==='ignore'&&call[1]===true));assert.ok(calls.some(call=>call[0]==='moveTop'));
   await new Promise(resolve=>setImmediate(resolve));
-  const states=calls.filter(call=>call[0]==='send'&&call[1]==='halo'),state=states.at(-1)[2];assert.equal(state.points.length,4);assert.equal(state.zones.length,12);assert.equal(state.dynamic,'live');assert.equal(state.selected,2);assert.equal(state.captureSourceId,'screen:y9:0');assert.equal(sourceRequests,1);
+  const states=calls.filter(call=>call[0]==='send'&&call[1]==='halo'),state=states.at(-1)[2];assert.equal(state.points.length,4);assert.equal(state.zones.length,12);assert.equal(state.dynamic,'live');assert.equal(state.selected,2);assert.equal(state.maskOutside,true);assert.equal(state.captureSourceId,'screen:y9:0');assert.equal(sourceRequests,1);
   controller.close();assert.equal(controller.win,null);
 });

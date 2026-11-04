@@ -7,6 +7,7 @@
   let retry = 0;
   let reconnectTimer = null;
   let connectTimer = null;
+  let pendingMessages = [];
   let phoneStorage;
   try { phoneStorage = localStorage; } catch { /* restricted/private browser */ }
   let manualPad = '';
@@ -25,10 +26,26 @@
   $('haloDot').closest('details')?.classList.add('halo-card');
 
   function connected() { return ws && ws.readyState === WebSocket.OPEN; }
+  function queueMessage(msg) {
+    const now = Date.now();
+    pendingMessages = pendingMessages.filter(item => item.expires > now);
+    if (msg.t === 'enter' || msg.t === 'home') pendingMessages = pendingMessages.filter(item => item.msg.t !== msg.t);
+    pendingMessages.push({ msg, expires: now + 5000 });
+    pendingMessages = pendingMessages.slice(-16);
+  }
+  function flushPending() {
+    if (!connected()) return;
+    const now = Date.now();
+    const queued = pendingMessages.filter(item => item.expires > now);
+    pendingMessages = [];
+    for (const item of queued) ws.send(JSON.stringify(item.msg));
+  }
   function send(msg) {
     if (!connected()) {
+      queueMessage(msg);
       toast('Lumen is reconnecting to the laptop…');
-      return false;
+      connect();
+      return true;
     }
     ws.send(JSON.stringify(msg));
     return true;
@@ -56,6 +73,7 @@
       clearTimeout(connectTimer);
       retry = 0;
       setConnection(true, 'Connected');
+      flushPending();
       renderStatus();
     };
     ws.onclose = () => {
@@ -363,10 +381,10 @@
   }
   function saveGalaxy(){send({t:'galaxy-settings',enabled:$('galaxyEnabled').checked,start:$('galaxyStart').value,end:$('galaxyEnd').value});}
   $('galaxyEnabled').addEventListener('change',saveGalaxy);$('galaxyStart').addEventListener('change',saveGalaxy);$('galaxyEnd').addEventListener('change',saveGalaxy);
-  function haloDraft(){const halo=state.halo||{};return{enabled:$('haloEnabled').checked,mode:'app',intensity:Number($('haloIntensity').value)/100,points:halo.points||[{x:.08,y:.08},{x:.92,y:.08},{x:.92,y:.92},{x:.08,y:.92}]};}
+  function haloDraft(){const halo=state.halo||{};return{enabled:$('haloEnabled').checked,alwaysOn:$('haloAlwaysOn').checked,mode:'app',intensity:Number($('haloIntensity').value)/100,points:halo.points||[{x:.08,y:.08},{x:.92,y:.08},{x:.92,y:.92},{x:.08,y:.92}]};}
   function renderHalo(){
     const halo=state.halo||{enabled:false,mode:'app',intensity:.35,points:[{x:.08,y:.08},{x:.92,y:.08},{x:.92,y:.92},{x:.08,y:.92}],guide:false,dynamic:{status:'off'}};
-    $('haloEnabled').checked=!!halo.enabled;if(document.activeElement!==$('haloIntensity'))$('haloIntensity').value=Math.round((halo.intensity||.35)*100);$('haloIntensityValue').textContent=`${Math.round(Number($('haloIntensity').value))}%`;
+    $('haloEnabled').checked=!!halo.enabled;$('haloAlwaysOn').checked=halo.alwaysOn!==false;if(document.activeElement!==$('haloIntensity'))$('haloIntensity').value=Math.round((halo.intensity||.35)*100);$('haloIntensityValue').textContent=`${Math.round(Number($('haloIntensity').value))}%`;
     haloSelectedPoint=Number.isInteger(halo.selectedPoint)?halo.selectedPoint:haloSelectedPoint;const names=['Top left','Top right','Bottom right','Bottom left'];
     (halo.points||[]).forEach((point,index)=>{$(`haloPoint${index}`).textContent=`${(point.x*100).toFixed(2).replace(/\.00$/,'')}%, ${(point.y*100).toFixed(2).replace(/\.00$/,'')}%`;});
     $$('[data-halo-point]').forEach(button=>button.classList.toggle('on',Number(button.dataset.haloPoint)===haloSelectedPoint));$('haloSelected').textContent=`Moving point ${haloSelectedPoint+1} · ${names[haloSelectedPoint]}`;
@@ -375,7 +393,7 @@
   }
   function sendHalo(action){send({t:'halo',action,...haloDraft()});}
   const saveHalo=()=>{clearTimeout(haloPreviewTimer);sendHalo('save');};
-  $('haloEnabled').addEventListener('change',saveHalo);$('haloIntensity').addEventListener('input',()=>{$('haloIntensityValue').textContent=`${$('haloIntensity').value}%`;clearTimeout(haloPreviewTimer);haloPreviewTimer=setTimeout(()=>sendHalo('preview'),16);});$('haloIntensity').addEventListener('change',saveHalo);
+  $('haloEnabled').addEventListener('change',saveHalo);$('haloAlwaysOn').addEventListener('change',saveHalo);$('haloIntensity').addEventListener('input',()=>{$('haloIntensityValue').textContent=`${$('haloIntensity').value}%`;clearTimeout(haloPreviewTimer);haloPreviewTimer=setTimeout(()=>sendHalo('preview'),16);});$('haloIntensity').addEventListener('change',saveHalo);
   $$('[data-halo-point]').forEach(button=>button.addEventListener('click',()=>{haloSelectedPoint=Number(button.dataset.haloPoint);$$('[data-halo-point]').forEach(item=>item.classList.toggle('on',item===button));$('haloSelected').textContent=`Moving point ${haloSelectedPoint+1} · ${['Top left','Top right','Bottom right','Bottom left'][haloSelectedPoint]}`;send({t:'halo',action:'select-point',point:haloSelectedPoint});}));
   $$('[data-halo-nudge]').forEach(button=>{let delay,repeat;const stop=()=>{clearTimeout(delay);clearInterval(repeat);};const move=()=>{const[dx,dy]=button.dataset.haloNudge.split(',').map(Number),step=Number($('haloStep').value);send({t:'halo',action:'nudge',point:haloSelectedPoint,dx:dx*step,dy:dy*step});};button.addEventListener('pointerdown',event=>{event.preventDefault();move();delay=setTimeout(()=>{repeat=setInterval(move,120);},420);});['pointerup','pointerleave','pointercancel'].forEach(name=>button.addEventListener(name,stop));button.addEventListener('click',event=>{if(event.detail===0)move();});});
   $('haloGuide').addEventListener('click',()=>{clearTimeout(haloPreviewTimer);send({t:'halo',action:'guide'});});$('haloReset').addEventListener('click',()=>{clearTimeout(haloPreviewTimer);send({t:'halo',action:'reset'});});

@@ -12,9 +12,10 @@ const DEFAULT_SETTINGS = {
   autoTvMode: false,
   // Keep the remote server available after signing in to Windows.
   runAtStartup: true,
-  // Text matched (case-insensitive) against the monitor name Windows reports. "Y9" is the projector.
+  // Match the product name first. Some units still expose the generic "Y9" EDID name,
+  // so keep that as a detection alias without showing it as the projector's identity.
   // Leave empty to treat any non-built-in, non-primary display as the projector.
-  projector: { match: 'Y9' },
+  projector: { match: 'OWNKNEW', aliases: ['Y9'] },
   // If Windows mirrors the projector, switch to "Extend" so the TV UI only appears on the projector.
   forceExtend: true,
   audio: {
@@ -31,10 +32,10 @@ const DEFAULT_SETTINGS = {
   // When the sleep timer ends: pause, close the app, leave TV mode, and (optionally) cut the signal
   // so the projector can go to standby by itself.
   sleepTimer: { turnOffProjector: true },
-  // During this local-time window, keep the decorative galaxy light opposite the Y9 projector.
+  // During this local-time window, keep the decorative galaxy light opposite the projector.
   galaxyNightSync: { enabled: true, start: '20:00', end: '08:00' },
   // Keep the movie inside the projector cloth and use the overspill as a responsive ambient halo.
-  halo: { enabled: false, mode: 'app', intensity: 0.35, points: [{ x: 0.08, y: 0.08 }, { x: 0.92, y: 0.08 }, { x: 0.92, y: 0.92 }, { x: 0.08, y: 0.92 }] },
+  halo: { enabled: false, alwaysOn: true, mode: 'app', intensity: 0.35, points: [{ x: 0.08, y: 0.08 }, { x: 0.92, y: 0.08 }, { x: 0.92, y: 0.92 }, { x: 0.08, y: 0.92 }] },
   // Uses Windows' offline speech recognizer. No local LLM is kept in memory.
   assistant: { enabled: true, wakeWords: ['Jarvis', 'Lumen'], speak: true },
   // Download each tile's site icon once (from Google's favicon service) to make the tiles prettier.
@@ -55,6 +56,11 @@ function merge(base, over) {
 
 function migrateStoredSettings(stored) {
   if (!isObj(stored)) return {};
+  if (isObj(stored.projector) && String(stored.projector.match || '').trim().toLowerCase() === 'y9') {
+    stored.projector.match = 'OWNKNEW';
+    const aliases = Array.isArray(stored.projector.aliases) ? stored.projector.aliases : [];
+    stored.projector.aliases = Array.from(new Set([...aliases, 'Y9']));
+  }
   // v0.1 stored four axis-aligned edge insets. Migrate the raw file before
   // merging defaults, otherwise DEFAULT_SETTINGS.halo.points would mask the
   // legacy frame and silently replace a user's existing alignment.

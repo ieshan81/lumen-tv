@@ -71,8 +71,12 @@ let volumeOverlay;
 let halo;
 let haloPreview=null;
 let haloPoint=0;
+let idleHaloDisplay=null;
 let ambient;
 let remote;
+let remoteRetryTimer=null;
+let remoteWatchdog=null;
+let remoteRetryMs=1500;
 let projectorIr;
 let galaxySync;
 let catalog;
@@ -119,9 +123,10 @@ const state = {
 
 async function viewState() {
   const urls = remote ? remote.urls() : [];
-  if (urls[0] && state.qrFor !== urls[0]) {
-    state.qr = await QRCode.toString(urls[0], { type: 'svg', margin: 1, color: { dark: '#0b0d14', light: '#ffffff' } });
-    state.qrFor = urls[0];
+  const pairing = remote ? remote.pairingUrl() : urls[0];
+  if (pairing && state.qrFor !== pairing) {
+    state.qr = await QRCode.toString(pairing, { type: 'svg', margin: 1, color: { dark: '#0b0d14', light: '#ffffff' } });
+    state.qrFor = pairing;
   }
   const running = browser.status();
   const runningTile = running && tiles.find((t) => t.id === running.tileId);
@@ -160,7 +165,7 @@ async function viewState() {
     galaxy: galaxySync ? galaxySync.publicState() : {enabled:false,night:false,status:'loading',desired:null,start:'20:00',end:'08:00'},
     volumeTarget:{kind:irVolume?'projector':'windows',label:irVolume?(projectorIr.state.remoteName||'Projector speaker'):(state.volume?.name||state.audio?.name||'Windows audio')},
     navigation: state.navigation,
-    remote: { urls, stable: remote ? remote.stableUrl() : '', qr: state.qr, clients: state.clients, blocked: state.firewallBlocked },
+    remote: { urls, stable: remote ? remote.stableUrl() : '', pairing, qr: state.qr, clients: state.clients, blocked: state.firewallBlocked },
     sleepAt: state.sleepAt,
     hotkeys: settings.homeHotkeys,
     projector: projectorState,
@@ -218,6 +223,7 @@ function toast(text) {
 }
 
 function haloConfig(){return normalizeHalo(haloPreview||settings?.halo||DEFAULT_HALO);}
+function haloDisplay(){return state.display||idleHaloDisplay;}
 function haloAccent(value=haloConfig()){
   if(value.mode!=='app'||state.mode!=='app')return '#8b7cff';
   const running=browser?.status?.(),tile=running&&tiles.find(item=>item.id===running.tileId);
@@ -226,15 +232,26 @@ function haloAccent(value=haloConfig()){
 function projectorContentBounds(display=state.display,value=haloConfig()){return !display?.bounds?null:value.enabled?contentBounds(display.bounds,value):{...display.bounds};}
 function contentDisplay(display=state.display){const bounds=projectorContentBounds(display);return display&&bounds?{...display,bounds}:display;}
 function updateHaloVisual(value=haloConfig()){
-  if(!halo||!state.display)return;
-  if(value.enabled||halo.guide)halo.show(state.display,value,{accent:haloAccent(value),guide:halo.guide,zones:ambient?.zones||[],dynamic:ambient?.status||'fallback',selected:haloPoint});else halo.hide();
+  const display=haloDisplay();
+  if(!halo||!display)return;
+  const enabledHere=value.enabled&&(state.mode!=='off'||value.alwaysOn!==false);
+  if(enabledHere||halo.guide)halo.show(display,value,{accent:haloAccent(value),guide:halo.guide,zones:ambient?.zones||[],dynamic:ambient?.status||'fallback',selected:haloPoint,maskOutside:true});else halo.hide();
+}
+function syncIdleHalo(display=idleHaloDisplay){
+  if(state.mode!=='off')return;
+  idleHaloDisplay=display||null;
+  const value=haloConfig();
+  if(!idleHaloDisplay||!value.enabled||value.alwaysOn===false){ambient?.stop();halo?.hide();return;}
+  if(ambient.status==='off'||ambient.display?.id!==idleHaloDisplay.id)ambient.startStream(idleHaloDisplay,value.points);else ambient.updatePoints(value.points);
+  updateHaloVisual(value);
 }
 function placeLauncher(value=haloConfig()){
   const win=state.win;if(DEV||!win||win.isDestroyed()||!state.display)return;
   win.setBounds(state.display.bounds);if(!win.isFullScreen())win.setFullScreen(true);
 }
 async function applyHaloLayout({moveBrowser=true}={}){
-  if(!state.display)return;const value=haloConfig(),bounds=projectorContentBounds(state.display,value);
+  const display=haloDisplay();if(!display)return;const value=haloConfig(),bounds=projectorContentBounds(display,value);
+  if(state.mode==='off'){syncIdleHalo(display);return;}
   if(value.enabled){if(ambient.status==='off'||ambient.display?.id!==state.display.id)ambient.startStream(state.display,value.points);else ambient.updatePoints(value.points);}else ambient.stop();
   updateHaloVisual(value);placeLauncher(value);input.setClamp(screen.dipToScreenRect(null,bounds));
   if(browser?.active){await browser.setProjectorLayout(value.enabled?value:null);if(moveBrowser)await browser.place(state.display.bounds,{fullscreen:true});}
@@ -343,6 +360,7 @@ async function enterTvMode(display) {
   if (state.mode !== 'off') return;
   log('entering TV mode on', display.label || display.id);
   state.display = display;
+  idleHaloDisplay = null;
   try{displays.rememberProjector(display);}catch(err){log('could not remember projector:',err.message);}
   state.mode = 'home';
   state.starting = false;
@@ -399,7 +417,8 @@ async function exitTvMode({ suppress = false } = {}) {
   if (state.mode === 'off') return;
   log('leaving TV mode', suppress ? '(user)' : '');
   state.mode = 'off';
-  haloPreview=null;ambient?.stop();halo?.hide();
+  const previousDisplay=state.display;
+  haloPreview=null;ambient?.stop();
   state.display = null;
   volume?.stop();
   volumeOverlay?.close();
@@ -430,6 +449,8 @@ async function exitTvMode({ suppress = false } = {}) {
   jarvis?.stop();
   await audio.restore(change).catch((err) => log('could not restore sound:', err.message));
   await browser.close().catch((err) => log('closing browser:', err.message));
+  await displays.refreshInventory().catch(()=>{});
+  syncIdleHalo(displays.findProjector(settings)||previousDisplay);
   pushState();
 }
 
@@ -601,6 +622,7 @@ async function evaluateDisplays() {
       extendAttempts = 0;
       if (state.mode === 'off') {
         if (settings.autoTvMode && !state.suppressed) await enterTvMode(projector);
+        else syncIdleHalo(projector);
       } else {
         const moved=reconnected||state.display?.id!==projector.id||JSON.stringify(state.display?.bounds)!==JSON.stringify(projector.bounds);
         state.display = projector;
@@ -615,7 +637,9 @@ async function evaluateDisplays() {
         displayMissingSince=0;
         state.suppressed = false;
         await exitTvMode();
-      } else if (settings.autoTvMode && !DEV) {
+      } else {
+        syncIdleHalo(null);
+        if (settings.autoTvMode && !DEV) {
         // Plugged in but Windows is not showing a separate desktop on it (mirrored, or "PC screen only").
         const needs = await displays.projectorNeedsExtending(settings);
         if (needs === false) {
@@ -629,7 +653,7 @@ async function evaluateDisplays() {
         } else if (needs && extendAttempts >= 3 && extendAttempts < 4) {
           extendAttempts++;
           log('projector is plugged in but Windows would not switch it on after 3 tries; giving up until it is replugged');
-        }
+        }}
       }
     }
   } catch (err) {
@@ -889,18 +913,18 @@ async function handleRemote(msg) {
       break;
     case 'halo': {
       if(msg.action==='select-point'){
-        if(!state.display){toast('Start Lumen before defining the screen corners.');break;}
+        if(!haloDisplay()){toast('Connect the HDMI projector before defining the screen corners.');break;}
         if(!Number.isInteger(msg.point)||msg.point<0||msg.point>3)break;
         haloPoint=msg.point;haloPreview=null;halo.setGuide(true);updateHaloVisual();await pushState();break;
       }
       if(msg.action==='nudge'){
-        if(!state.display||!Number.isInteger(msg.point)||msg.point<0||msg.point>3)break;
+        if(!haloDisplay()||!Number.isInteger(msg.point)||msg.point<0||msg.point>3)break;
         try{settings.halo=nudgePoint(settings.halo,msg.point,Number(msg.dx),Number(msg.dy));}
         catch(error){toast(error.message);break;}
         haloPoint=msg.point;haloPreview=null;halo.setGuide(true);cfg.saveSettings(settings);await applyHaloLayout({moveBrowser:false});await pushState();break;
       }
       if(msg.action==='guide'){
-        if(!state.display){toast('Start Lumen before showing the frame guide.');break;}
+        if(!haloDisplay()){toast('Connect the HDMI projector before showing the frame guide.');break;}
         haloPreview=null;
         halo.setGuide(!halo.guide);
         updateHaloVisual();
@@ -913,7 +937,7 @@ async function handleRemote(msg) {
         haloPoint=0;
         haloPreview=null;
         cfg.saveSettings(settings);
-        if(state.display)halo.setGuide(true);
+        if(haloDisplay())halo.setGuide(true);
         await applyHaloLayout({moveBrowser:false});
         await pushState();
         toast('Four corners reset. Select a corner and align its crosshair with the cloth.');
@@ -946,6 +970,7 @@ async function handleRemote(msg) {
       const switching=wasActive&&state.display?.id!==id;
       if(switching)await exitTvMode({suppress:true});
       displays.rememberProjector(chosen,{manual:true});
+      if(!wasActive)syncIdleHalo(chosen);
       if(switching)await startTvMode();
       await pushState();
       toast(`Remembered ${chosen.label||'this external display'} as your projector.`);
@@ -1091,6 +1116,29 @@ async function syncMediaState() {
 
 // ---------------------------------------------------------------- firewall
 
+function scheduleRemoteRecovery(delay=remoteRetryMs){
+  if(quitting||remoteRetryTimer||remote?.isListening())return;
+  remoteRetryTimer=setTimeout(()=>{remoteRetryTimer=null;startRemoteService();},Math.max(250,delay));
+}
+
+async function startRemoteService(){
+  if(!remote||remote.isListening())return true;
+  try{
+    await remote.start();
+    remote.startHeartbeat();
+    remoteRetryMs=1500;
+    const stable=remote.stableUrl();
+    log('phone remote online on port',settings.remote.port,stable?`as ${new URL(stable).hostname}`:'');
+    checkFirewall().catch((err)=>log('firewall check failed:',err.message));
+    return true;
+  }catch(error){
+    log('could not start the phone remote:',error.message);
+    remoteRetryMs=Math.min(30000,Math.round(remoteRetryMs*1.8));
+    scheduleRemoteRecovery(remoteRetryMs);
+    return false;
+  }
+}
+
 async function checkFirewall() {
   if ((process.env.LUMEN_REMOTE_HOST || settings.remote.host).startsWith('127.')) return; // local-only (tests)
   const blocked = await firewall.isBlocked(settings.remote.port);
@@ -1201,6 +1249,8 @@ async function quit() {
   volumeOverlay?.close();
   ambient?.stop();
   halo?.close();
+  clearTimeout(remoteRetryTimer);
+  clearInterval(remoteWatchdog);
   if (remote) remote.stop();
   app.exit(0);
 }
@@ -1296,14 +1346,11 @@ app.whenReady().then(async () => {
   remote.on('message', (msg) => handleRemote(msg).catch((err) => log('remote command failed:', err)));
   remote.on('clients', (n) => { state.clients = n; pushState(); });
   remote.on('connected', (ws) => viewState().then((s) => remote.send(ws, remoteState(s))));
-  try {
-    await remote.start();
-    remote.startHeartbeat();
-    log('phone remote:', remote.urls().join('  '));
-    checkFirewall().catch((err) => log('firewall check failed:', err.message));
-  } catch (err) {
-    log('could not start the phone remote:', err.message);
-  }
+  remote.on('offline', error => { log('phone remote went offline:',error.message);scheduleRemoteRecovery(); });
+  remote.on('discovery-error', error => log('permanent remote address unavailable:',error.message));
+  remote.on('address', () => { state.qrFor='';if(tray)pushState().catch(()=>{}); });
+  await startRemoteService();
+  remoteWatchdog=setInterval(()=>{if(!remote.isListening())scheduleRemoteRecovery(250);},10000);
 
   tray = new Tray(makeTrayIcon());
   tray.on('click', () => (state.mode === 'off' ? handleRemote({ t: 'enter' }) : goHome()));

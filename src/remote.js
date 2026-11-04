@@ -8,6 +8,7 @@ const path = require('path');
 const crypto = require('crypto');
 const { EventEmitter } = require('events');
 const { WebSocketServer } = require('ws');
+const ciao = require('@homebridge/ciao');
 
 const ROOT = path.join(__dirname, '..', 'remote');
 // [file, content type, public?, contains the secret token to fill in?]
@@ -43,12 +44,16 @@ function lanAddresses() {
 }
 
 class RemoteServer extends EventEmitter {
-  constructor({ host, port, token }) {
+  constructor({ host, port, token, discovery = true }) {
     super();
     this.host = host;
     this.port = port;
     this.token = token;
+    this.discovery = discovery && !String(host).startsWith('127.');
     this.clients = new Set();
+    this.advertisedHost = '';
+    this.starting = null;
+    this.stopping = false;
   }
 
   _authed(req) {
@@ -60,8 +65,15 @@ class RemoteServer extends EventEmitter {
   }
 
   start() {
+    if (this.http?.listening) return Promise.resolve();
+    if (this.starting) return this.starting;
+    this.stopping = false;
     this.http = http.createServer((req, res) => {
       const url = new URL(req.url, 'http://x');
+      if (url.pathname === '/health') {
+        res.writeHead(200, { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
+        return res.end(JSON.stringify({ ok: true, clients: this.clients.size }));
+      }
       const iconId = /^\/tile-icon\/([\w-]+)$/.exec(url.pathname);
       if (iconId && this._authed(req)) {
         const iconFile = path.join(__dirname, '..', 'cache', 'icons', `${iconId[1]}.png`);
@@ -106,10 +118,41 @@ class RemoteServer extends EventEmitter {
       this.wss.handleUpgrade(req, socket, head, (ws) => this._onClient(ws));
     });
 
-    return new Promise((resolve, reject) => {
-      this.http.once('error', reject);
-      this.http.listen(this.port, this.host, () => resolve());
+    const server = this.http;
+    this.starting = new Promise((resolve, reject) => {
+      const startupError = error => reject(error);
+      server.once('error', startupError);
+      server.listen(this.port, this.host, async () => {
+        server.removeListener('error', startupError);
+        server.on('error', error => this.emit('offline', error));
+        server.on('close', () => { if (!this.stopping) this.emit('offline', new Error('Phone remote server closed.')); });
+        try { await this._advertise(); }
+        catch (error) { this.emit('discovery-error', error); }
+        this.emit('online');
+        resolve();
+      });
+    }).finally(() => { this.starting = null; });
+    return this.starting;
+  }
+
+  async _advertise() {
+    if (!this.discovery || this.service) return;
+    this.responder = ciao.getResponder();
+    this.service = this.responder.createService({
+      name: 'Lumen Remote',
+      type: 'http',
+      port: this.port,
+      hostname: 'lumen',
+      disabledIpv6: true,
+      txt: { path: '/', app: 'lumen-tv' }
     });
+    this.service.on('hostname-change', hostname => {
+      this.advertisedHost = String(hostname || '').replace(/\.$/, '');
+      this.emit('address', this.stableUrl());
+    });
+    await this.service.advertise();
+    this.advertisedHost = String(this.service.getHostname() || 'lumen.local').replace(/\.$/, '');
+    this.emit('address', this.stableUrl());
   }
 
   _onClient(ws) {
@@ -131,6 +174,7 @@ class RemoteServer extends EventEmitter {
 
   /** Drop dead phone connections (screen locked, left Wi-Fi) so the "connected" indicator stays honest. */
   startHeartbeat() {
+    clearInterval(this.beat);
     this.beat = setInterval(() => {
       for (const ws of this.clients) {
         if (!ws.isAlive) { ws.terminate(); continue; }
@@ -155,16 +199,26 @@ class RemoteServer extends EventEmitter {
     return hosts.map((h) => `http://${h}:${this.port}/?t=${this.token}`);
   }
 
-  /** Address based on the computer's name, which keeps working when the router hands out a new IP. */
+  /** mDNS address advertised by Lumen, so a saved phone shortcut survives DHCP address changes. */
   stableUrl() {
-    const name = os.hostname();
-    return name ? `http://${name}.local:${this.port}/?t=${this.token}` : '';
+    const name = this.advertisedHost || (this.discovery ? 'lumen.local' : '');
+    return name ? `http://${name}:${this.port}/?t=${this.token}` : '';
   }
 
+  pairingUrl() { return this.stableUrl() || this.urls()[0] || ''; }
+  isListening() { return !!this.http?.listening; }
+
   stop() {
+    this.stopping = true;
     clearInterval(this.beat);
     for (const ws of this.clients) ws.terminate();
     if (this.http) this.http.close();
+    this.clients.clear();
+    const responder = this.responder;
+    this.service = null;
+    this.responder = null;
+    this.advertisedHost = '';
+    if (responder) Promise.resolve(responder.shutdown()).catch(() => {});
   }
 }
 

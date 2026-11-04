@@ -19,6 +19,12 @@ test('remote requires authentication and accepts a paired WebSocket', async (t) 
   const remote = new RemoteServer({ host: '127.0.0.1', port, token });
   await remote.start();
   t.after(() => remote.stop());
+  assert.equal(remote.isListening(),true);
+  assert.equal(remote.stableUrl(),'');
+
+  const health = await fetch(`http://127.0.0.1:${port}/health`);
+  assert.equal(health.status,200);
+  assert.equal((await health.json()).ok,true);
 
   const denied = await fetch(`http://127.0.0.1:${port}/`);
   assert.equal(denied.status, 401);

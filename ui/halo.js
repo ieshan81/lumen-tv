@@ -340,6 +340,16 @@ function render(state) {
     // ending as a colored rectangle. All four masks reach true transparency.
     applyOuterFeather(points, w, h);
 
+    // Put an opaque black safety mask behind the coloured Halo. This guarantees
+    // that a fixed-position site element or an ordinary Windows desktop cannot
+    // leak beyond the calibrated cloth polygon. Halo light is painted above it.
+    if (state.maskOutside) {
+      ctx.globalCompositeOperation = 'destination-over';
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, w, h);
+      ctx.globalCompositeOperation = 'source-over';
+    }
+
     // Keep the movie completely untouched. The physical cloth edge hides this
     // cut while the light outside it falls away smoothly.
     ctx.globalCompositeOperation = 'destination-out';

@@ -19,6 +19,8 @@ test('home uses a calm hearth layer without the superhero HUD', () => {
   const remote = read('remote/index.html');
   assert.match(html, /<canvas class="hearth" id="hearth"/);
   assert.match(html, /class="projector-surface" id="projectorSurface"/);
+  assert.match(html, /<button[^>]+class="status-chip"[^>]+id="chip"/);
+  assert.match(html, /id="pairing" role="dialog" aria-modal="true"/);
   assert.match(html, /id="heroLogo"/);
   assert.ok(html.indexOf('ambience.js') < html.indexOf('app.js'), 'ambience must load before the launcher');
   assert.doesNotMatch(html, /<footer/);
@@ -38,6 +40,9 @@ test('movie art drives both the hero and its fireplace palette', () => {
   assert.match(source, /rowKind==='dock'.*app-icon/);
   assert.match(source, /applyProjectorLayout\(state\.halo\)/);
   assert.match(source, /surface\.style\.transform=css/);
+  assert.match(source, /\$\('chip'\)\.addEventListener\('click',openPairing\)/);
+  assert.match(read('ui/halo.js'), /state\.maskOutside/);
+  assert.match(read('src/browser.js'), /clip-path:inset\(0\).*contain:paint/);
   assert.doesNotMatch(source, /jet-active|systemLine/);
 
   const blue = new Uint8ClampedArray(8 * 4);

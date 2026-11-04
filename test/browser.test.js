@@ -107,8 +107,8 @@ test('Edge retains login storage and reports typing and media inside another ori
   await until(async () => (await browser.evaluate('document.readyState')) === 'complete', 'Fixture did not load');
   const frame={enabled:true,mode:'app',intensity:.2,points:[{x:.1,y:.08},{x:.9,y:.12},{x:.88,y:.9},{x:.12,y:.86}]};
   await browser.setProjectorLayout(frame);
-  const transformed=await browser.evaluate(`({style:!!document.querySelector('#lumen-projector-layout'),transform:getComputedStyle(document.body).transform,rect:(()=>{const r=document.body.getBoundingClientRect();return{x:r.x,y:r.y,width:r.width,height:r.height}})()})`);
-  assert.equal(transformed.style,true);assert.notEqual(transformed.transform,'none');assert.ok(transformed.rect.x>0&&transformed.rect.y>0,'Perspective frame must inset the page from the projector raster');
+  const transformed=await browser.evaluate(`({style:!!document.querySelector('#lumen-projector-layout'),transform:getComputedStyle(document.body).transform,clip:getComputedStyle(document.body).clipPath,contain:getComputedStyle(document.body).contain,overflow:getComputedStyle(document.body).overflow,rect:(()=>{const r=document.body.getBoundingClientRect();return{x:r.x,y:r.y,width:r.width,height:r.height}})()})`);
+  assert.equal(transformed.style,true);assert.notEqual(transformed.transform,'none');assert.notEqual(transformed.clip,'none');assert.match(transformed.contain,/paint/);assert.match(transformed.overflow,/clip|hidden/);assert.ok(transformed.rect.x>0&&transformed.rect.y>0,'Perspective frame must inset the page from the projector raster');
   await browser.setProjectorLayout(null);assert.equal(await browser.evaluate(`!document.querySelector('#lumen-projector-layout')`),true);
   // A parent hook that cannot see its embedded player must not swallow media commands.
   await browser.evaluate('window.LumenTV={getState:()=>({page:"browse",duration:0}),togglePlay(){},seekBy(){}}');

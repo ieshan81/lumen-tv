@@ -14,7 +14,7 @@
   <header class="topbar">
     <div class="brand"><b>LUMEN</b><small>Home</small></div>
     <div class="jarvis-status" id="jarvis"><span class="voice-bars"><i></i><i></i><i></i></span><b>JARVIS</b><span id="jarvisText">Ready</span></div>
-    <div class="status-chip" id="chip"><i></i><span id="chipText">Remote offline</span></div>
+    <button type="button" class="status-chip" id="chip" aria-controls="pairing" aria-expanded="false"><i></i><span id="chipText">Remote offline</span></button>
     <div class="clock"><b id="time"></b><span id="date"></span></div>
   </header>
   <main>
@@ -30,8 +30,8 @@
     </section>
     <section class="shelves" id="shelves"></section>
   </main>
-  <div class="pairing" id="pairing" hidden>
-    <div class="pair-card"><div class="qr" id="qr"></div><div><div class="pair-label">Remote connection</div><h2>Pair your phone</h2><p>Connect to the same Wi-Fi and scan this code. Save it to your Home Screen once and Lumen remembers you.</p><div class="pair-url" id="pairUrl"></div><p class="warning" id="blocked" hidden>Windows Firewall is blocking the phone. Use the Lumen tray menu on the laptop and choose Fix phone connection.</p><small>Press Back to close</small></div></div>
+  <div class="pairing" id="pairing" role="dialog" aria-modal="true" aria-labelledby="pairTitle" hidden>
+    <div class="pair-card"><div class="qr" id="qr"></div><div><div class="pair-label">Remote connection</div><h2 id="pairTitle">Pair your phone</h2><p>Connect to the same Wi-Fi and scan this code. Lumen now uses a permanent local address, so the Home Screen app survives Wi-Fi address changes.</p><div class="pair-url" id="pairUrl"></div><p class="warning" id="blocked" hidden>Windows Firewall is blocking the phone or local discovery. Use the Lumen tray menu on the laptop and choose Fix phone connection.</p><button type="button" class="pair-close" id="pairClose">Close</button></div></div>
   </div>
   <div class="toast" id="toast"></div>
 </div>

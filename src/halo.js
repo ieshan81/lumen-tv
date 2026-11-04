@@ -5,7 +5,7 @@ const DEFAULT_POINTS=Object.freeze([
   Object.freeze({x:.08,y:.08}),Object.freeze({x:.92,y:.08}),
   Object.freeze({x:.92,y:.92}),Object.freeze({x:.08,y:.92})
 ]);
-const DEFAULT_HALO=Object.freeze({enabled:false,mode:'app',intensity:.35,points:DEFAULT_POINTS});
+const DEFAULT_HALO=Object.freeze({enabled:false,alwaysOn:true,mode:'app',intensity:.35,points:DEFAULT_POINTS});
 const clamp=(value,min,max)=>Math.min(max,Math.max(min,value));
 function finite(value,fallback,min,max){return Number.isFinite(value)?clamp(value,min,max):fallback;}
 function pointsFromFrame(frame={}){
@@ -23,10 +23,10 @@ function normalizeHalo(value={}){
   value=value&&typeof value==='object'&&!Array.isArray(value)?value:{};
   const requested=Array.isArray(value.points)?value.points.map((p,i)=>({x:finite(p?.x,DEFAULT_POINTS[i].x,.01,.99),y:finite(p?.y,DEFAULT_POINTS[i].y,.01,.99)})):pointsFromFrame(value.frame);
   const points=validQuad(requested)?requested:DEFAULT_POINTS.map(point=>({...point}));
-  return{enabled:value.enabled===true,mode:MODES.has(value.mode)?value.mode:'app',intensity:finite(value.intensity,.35,.04,1),points};
+  return{enabled:value.enabled===true,alwaysOn:value.alwaysOn!==false,mode:MODES.has(value.mode)?value.mode:'app',intensity:finite(value.intensity,.35,.04,1),points};
 }
 function parseHalo(value){
-  if(!value||typeof value!=='object'||Array.isArray(value)||typeof value.enabled!=='boolean'||!MODES.has(value.mode)||!Number.isFinite(value.intensity)||value.intensity<.04||value.intensity>1)throw new Error('Choose valid Halo settings.');
+  if(!value||typeof value!=='object'||Array.isArray(value)||typeof value.enabled!=='boolean'||(value.alwaysOn!=null&&typeof value.alwaysOn!=='boolean')||!MODES.has(value.mode)||!Number.isFinite(value.intensity)||value.intensity<.04||value.intensity>1)throw new Error('Choose valid Halo settings.');
   const points=Array.isArray(value.points)?value.points:pointsFromFrame(value.frame);
   if(!validQuad(points))throw new Error('Keep all four screen corners in order and inside the projector area.');
   return normalizeHalo({...value,points});
@@ -61,11 +61,11 @@ function projectiveMatrix(value,width,height){
 class HaloController{
   constructor({createWindow,getSources}={}){this.createWindow=createWindow||((options)=>new(require('electron').BrowserWindow)(options));this.getSources=getSources||(createWindow?null:(options)=>require('electron').desktopCapturer.getSources(options));this.win=null;this.ready=false;this.pending=null;this.guide=false;this.zones=[];this.captureDisplayId=null;this.captureSourceId='';this.captureError='';this.captureGeneration=0;this.captureResolving=false;}
   get visible(){return !!this.win&&!this.win.isDestroyed()&&this.win.isVisible();}
-  show(display,value,{accent='#8b7cff',guide=this.guide,zones=this.zones,dynamic='fallback',selected=0}={}){
+  show(display,value,{accent='#8b7cff',guide=this.guide,zones=this.zones,dynamic='fallback',selected=0,maskOutside=true}={}){
     if(!display?.bounds)return;const halo=normalizeHalo(value);this.guide=!!guide;this.zones=Array.isArray(zones)?zones:[];this.bounds={...display.bounds};
     const local={x:0,y:0,width:this.bounds.width,height:this.bounds.height};
     if(this.captureDisplayId!==display.id){this.captureDisplayId=display.id;this.captureSourceId='';this.captureError='';this.captureGeneration++;this.captureResolving=false;}
-    this.pending={enabled:halo.enabled,guide:this.guide,intensity:halo.intensity,color:haloColor(halo,accent),points:pointPixels(local,halo),zones:this.zones,dynamic,selected:Number.isInteger(selected)?selected:0,captureSourceId:this.captureSourceId,captureError:this.captureError};
+    this.pending={enabled:halo.enabled,guide:this.guide,intensity:halo.intensity,color:haloColor(halo,accent),points:pointPixels(local,halo),zones:this.zones,dynamic,selected:Number.isInteger(selected)?selected:0,maskOutside:!!maskOutside,captureSourceId:this.captureSourceId,captureError:this.captureError};
     if(!this.win||this.win.isDestroyed()){
       const win=this.createWindow({...this.bounds,show:false,frame:false,transparent:true,focusable:false,skipTaskbar:true,resizable:false,movable:false,hasShadow:false,alwaysOnTop:true,backgroundColor:'#00000000',title:'Lumen Halo',webPreferences:{preload:path.join(__dirname,'..','ui','halo-preload.js'),sandbox:true,contextIsolation:true,backgroundThrottling:false}});
       this.win=win;this.ready=false;win.setIgnoreMouseEvents(true,{forward:false});win.setMenuBarVisibility(false);win.setContentProtection?.(true);
