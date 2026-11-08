@@ -30,5 +30,12 @@
     "desc": "The big-screen YouTube layout, made for arrow keys. Ads are blocked.",
     "tvUserAgent": true,
     "adblock": true
+  },
+  {
+    "id": "peacock",
+    "name": "Peacock",
+    "url": "https://www.peacocktv.com/",
+    "accent": "#f5b82e",
+    "desc": "Watch Peacock in Microsoft Edge with your saved subscription."
   }
 ]

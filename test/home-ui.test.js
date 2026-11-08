@@ -8,9 +8,9 @@ const { paletteFromPixels } = require('../ui/ambience');
 const root = path.join(__dirname, '..');
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 
-test('home exposes only the three intentional apps', () => {
+test('home exposes only the intentional apps', () => {
   const tiles = JSON.parse(read('tiles.json'));
-  assert.deepEqual(tiles.map(tile => tile.id), ['jojo', 'movy', 'youtube']);
+  assert.deepEqual(tiles.map(tile => tile.id), ['jojo', 'movy', 'youtube', 'peacock']);
 });
 
 test('home uses a calm hearth layer without the superhero HUD', () => {

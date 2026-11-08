@@ -21,7 +21,7 @@ function parseIntent(raw) {
     const language = findKey(lower, LANGUAGES);
     return { type: 'recommend', genre, country, language, mediaType: /\b(series|show|tv)\b/.test(lower) ? 'tv' : 'movie', query: text };
   }
-  const app = ['movy', 'jojo', 'netflix', 'youtube', 'prime', 'disney', 'hbo'].find(name => new RegExp(`\\b${name}\\b`, 'i').test(lower));
+  const app = ['movy', 'jojo', 'netflix', 'youtube', 'prime', 'disney', 'hbo', 'peacock'].find(name => new RegExp(`\\b${name}\\b`, 'i').test(lower));
   if (app && /\b(open|launch|start)\b/.test(lower)) return { type: 'app', app };
   return { type: 'search', query: text };
 }
