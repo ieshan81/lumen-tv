@@ -66,6 +66,23 @@ test('a blank Movy rail image cannot erase enriched Continue Watching art', () =
   fs.rmSync(dir, { recursive:true, force:true });
 });
 
+test('Continue Watching shows each show once, using its latest unfinished episode', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'lumen-history-dedupe-'));
+  const history = new WatchHistory({ file:path.join(dir, 'history.json'), writeIntervalMs:0 });
+  const entry = (ref, season, episode, progress, updatedAt, extra = {}) => ({ key:`${ref}:${season ?? ''}:${episode ?? ''}`, ref, season, episode, title:ref, url:`https://www.movy.sx/${ref.replace(':', '/')}`, position:progress * 1000, duration:1000, progress, updatedAt, ...extra });
+  history.items = [
+    entry('tv:289517', 1, 4, .56, 90), entry('tv:1434', 10, 7, 1, 80), entry('tv:289517', 1, 3, .05, 70),
+    entry('tv:1434', 10, 5, .13, 60), entry('movie:1384216', null, null, .09, 50), entry('tv:289517', 1, 2, .87, 40),
+    entry('tv:1434', 9, 18, .8, 30), entry('jojo:naruto', 1, 2, .3, 20, { series:'Naruto' }), entry('jojo:naruto-episode-1', 1, 1, .4, 10, { series:'Naruto' })
+  ];
+  const shown = history.publicItems();
+  assert.deepEqual(shown.map(item => item.key), ['tv:289517:1:4', 'tv:1434:10:5', 'movie:1384216::', 'jojo:naruto:1:2']);
+  assert.equal(history.items.length, 9, 'every episode keeps its own saved position');
+  assert.equal(history.publicItems(2).length, 2);
+  assert.equal(history.find('tv 289517').key, 'tv:289517:1:4', '"continue" resolves to the same episode the rail shows');
+  fs.rmSync(dir, { recursive:true, force:true });
+});
+
 test('Jarvis parses recommendation, YouTube and resume requests without an LLM', async () => {
   assert.deepEqual(parseIntent('Yo Jarvis, I feel like watching something horror Indonesian'), { type:'recommend', genre:'horror', country:'indonesian', language:'indonesian', mediaType:'movie', query:'I feel like watching something horror Indonesian' });
   assert.equal(parseIntent('did Mrwhosetheboss put anything on YouTube').type, 'youtube');

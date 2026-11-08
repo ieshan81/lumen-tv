@@ -31,6 +31,12 @@ function scoreTitle(query, item) {
   return q.reduce((n, word) => n + (hay.has(word) ? 1 : 0), 0) / q.length;
 }
 
+/** Identity of the show or movie an entry belongs to, shared by all of its episodes. */
+function showKey(item) {
+  const series = String(item.series || '').toLowerCase().replace(/\W+/g, '-');
+  return item.ref && item.ref.startsWith('jojo:') && series ? `jojo:series:${series}` : item.ref || item.key;
+}
+
 class WatchHistory {
   constructor({ root, file, writeIntervalMs = 5000, maxEntries = 80 } = {}) {
     this.file = file || path.join(root || path.join(__dirname, '..'), 'cache', 'watch-history.json');
@@ -103,7 +109,17 @@ class WatchHistory {
   }
 
   flush() { this.lastWrite = Date.now(); atomicWrite(this.file, { version: 1, items: this.items }); }
-  publicItems(limit = 12) { return this.items.filter(item => item.progress >= 0.01 && item.progress < 0.94).slice(0, limit); }
+  // Every episode keeps its own saved position (so it resumes exactly), but the
+  // Continue Watching rail shows each show once: its most recently watched
+  // unfinished episode.
+  publicItems(limit = 12) {
+    const seen = new Set();
+    return this.items
+      .filter(item => item.progress >= 0.01 && item.progress < 0.94)
+      .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+      .filter(item => { const show = showKey(item); if (seen.has(show)) return false; seen.add(show); return true; })
+      .slice(0, limit);
+  }
   find(query) { return this.publicItems(40).map(item => ({ item, score: scoreTitle(query, item) })).sort((a, b) => b.score - a.score || b.item.updatedAt - a.item.updatedAt)[0]?.score >= 0.45 ? this.publicItems(40).map(item => ({ item, score: scoreTitle(query, item) })).sort((a, b) => b.score - a.score || b.item.updatedAt - a.item.updatedAt)[0].item : null; }
 }
 
