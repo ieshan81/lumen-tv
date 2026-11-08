@@ -127,6 +127,12 @@ class Cdp extends EventEmitter {
   }
 }
 
+// Hardware PlayReady (what Edge uses for most paid streaming) draws protected video that Windows
+// blanks out of every screen capture, so the Halo only ever sees black. With PlayReady off, Edge
+// plays the same service through Widevine's software path, which the Halo can read. It is a
+// per-launch Edge switch, so only tiles that ask for it (readableVideo: true) get it.
+const READABLE_VIDEO_FEATURE = 'msPlayReadyWin10';
+
 class TvBrowser extends EventEmitter {
   constructor({ edgePath, debugPort, profileDir, headless = false, mediaKey = null }) {
     super();
@@ -137,6 +143,8 @@ class TvBrowser extends EventEmitter {
     this.mediaKey = mediaKey;
     this.cdp = null;
     this.child = null;
+    // How the running Edge was started: true = PlayReady off, false = normal, undefined = not ours to know.
+    this.edgeReadable = undefined;
     this.reset();
   }
 
@@ -194,7 +202,8 @@ class TvBrowser extends EventEmitter {
     });
   }
 
-  _flags(extra = []) {
+  _flags(extra = [], tile = this.tile) {
+    const disabled = ['Translate', 'msEdgeSidebarV2', 'msImplicitSignin', ...(tile && tile.readableVideo ? [READABLE_VIDEO_FEATURE] : [])];
     return [
       `--user-data-dir=${this.profileDir}`,
       `--remote-debugging-port=${this.port}`,
@@ -206,7 +215,7 @@ class TvBrowser extends EventEmitter {
       // Edge would otherwise sign this profile into the Windows account and sync every extension
       // into it, opening dozens of welcome tabs. The TV profile stays clean and local.
       '--disable-sync',
-      '--disable-features=Translate,msEdgeSidebarV2,msImplicitSignin',
+      `--disable-features=${disabled.join(',')}`,
       ...(this.headless ? ['--headless=new', '--mute-audio'] : []),
       ...extra
     ];
@@ -305,17 +314,17 @@ class TvBrowser extends EventEmitter {
   }
 
   /** Start Edge pointing at an app-style window (Edge hands it to the running instance if there is one). */
-  _launchApp(url, bounds) {
+  _launchApp(url, bounds, tile = this.tile) {
     if (!this.edgePath) throw new Error('Microsoft Edge was not found. Set browser.path in settings.json.');
     fs.mkdirSync(this.profileDir, { recursive: true });
     this._seedProfile();
-    const child = spawn(this.edgePath, this._flags([`--app=${url}`, ...this._windowFlags(bounds)]), { detached: true, stdio: 'ignore' });
+    const child = spawn(this.edgePath, this._flags([`--app=${url}`, ...this._windowFlags(bounds)], tile), { detached: true, stdio: 'ignore' });
     child.unref();
     this.child = child;
   }
 
-  async _spawn(url, bounds) {
-    this._launchApp(url, bounds);
+  async _spawn(url, bounds, tile) {
+    this._launchApp(url, bounds, tile);
     for (let i = 0; i < 60; i++) {
       if (await this._version()) return;
       await sleep(250);
@@ -357,7 +366,16 @@ class TvBrowser extends EventEmitter {
   async open(tile, bounds,placeOptions={}) {
     const projectorLayout=placeOptions.layout||null;
     const url = this.launchUrl(tile);
-    const running = !!(await this._version());
+    let running = !!(await this._version());
+    if (running) {
+      // The DRM switch only applies when Edge starts, so a tile that needs the other setting gets a fresh Edge.
+      // Unknown (an Edge Lumen did not start) is treated as normal: restart only when a readable tile needs it.
+      const wants = !!tile.readableVideo;
+      if (wants ? this.edgeReadable !== true : this.edgeReadable === true) {
+        await this.close();
+        running = false;
+      }
+    }
     if (!running) {
       this.cdp = null;
       this.reset();
@@ -378,10 +396,11 @@ class TvBrowser extends EventEmitter {
       // Always open a fresh app window rather than borrowing one the user may be using.
       if (running) {
         const before = await this._pageIds();
-        this._launchApp(tile.lockNavigation ? 'about:blank' : url, bounds);
+        this._launchApp(tile.lockNavigation ? 'about:blank' : url, bounds, tile);
         page = await this._waitForNewPage(before);
       } else {
-        await this._spawn(tile.lockNavigation ? 'about:blank' : url, bounds);
+        await this._spawn(tile.lockNavigation ? 'about:blank' : url, bounds, tile);
+        this.edgeReadable = !!tile.readableVideo;
         await this._ensureConnected();
         page = await this._waitForNewPage(new Set());
       }
@@ -884,6 +903,7 @@ class TvBrowser extends EventEmitter {
       });
     }
     this.cdp = null;
+    this.edgeReadable = undefined;
     if (this.child === child) this.child = null;
   }
 
@@ -893,6 +913,7 @@ class TvBrowser extends EventEmitter {
     fs.mkdirSync(this.profileDir, { recursive: true });
     this._seedProfile();
     this.setupMode = true;
+    this.edgeReadable = undefined; // this window may start Edge, or join the one already running
     popupCloser.stopPopupSweep(this);
     spawn(this.edgePath, this._flags(['--new-window', ...urls]), { detached: true, stdio: 'ignore' }).unref();
   }
