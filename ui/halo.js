@@ -19,6 +19,11 @@ let lastSampleAt = 0;
 let liveZones = [];
 let blackFrames = 0;
 let publishedStatus = '';
+// Scene-aware light: 0 = dark scene (no Halo), 1 = full Halo.
+const { lightTarget, followLight, FALLBACK_AFTER } = window.lumenHaloLight;
+let sceneLight = 1;
+let everLive = false;
+let lastAccent = '';
 
 function rgb(hex) {
   const value = parseInt(String(hex || '#000000').slice(1), 16);
@@ -85,9 +90,10 @@ function sampleVideoZones() {
       zones.push({ edge, t, ...color });
     }
   }
+  const brightness = zones.reduce((sum, zone) => sum + zone.luma, 0) / zones.length;
   const lit = zones.filter(zone => zone.luma > 7);
-  if (lit.length < 8 || lit.reduce((sum, zone) => sum + zone.luma, 0) / lit.length < 12) return null;
-  return zones.map(zone => ({ edge: zone.edge, t: zone.t, color: enhancedHex(zone.red, zone.green, zone.blue) }));
+  if (lit.length < 8 || lit.reduce((sum, zone) => sum + zone.luma, 0) / lit.length < 12) return { zones: null, brightness };
+  return { brightness, zones: zones.map(zone => ({ edge: zone.edge, t: zone.t, color: enhancedHex(zone.red, zone.green, zone.blue) })) };
 }
 
 function publishStatus(status, error = '') {
@@ -111,6 +117,8 @@ function stopCapture() {
   blackFrames = 0;
   lastSampleAt = 0;
   publishedStatus = '';
+  sceneLight = 1;
+  everLive = false;
 }
 
 function sampleContinuousFrame(now, generation) {
@@ -119,15 +127,25 @@ function sampleContinuousFrame(now, generation) {
   // cuts immediately without flickering when one dark frame passes through.
   if (now - lastSampleAt >= 32) {
     lastSampleAt = now;
-    const next = sampleVideoZones();
-    if (!next) {
-      if (++blackFrames >= 6) {
+    const sample = sampleVideoZones();
+    const next = sample?.zones;
+    if (sample && !next) {
+      blackFrames++;
+      if (!everLive && blackFrames >= FALLBACK_AFTER) {
+        // No picture was ever readable: protected video. Only then glow in the app colour.
         liveZones = [];
-        render({ ...current, zones: [] });
+        sceneLight = followLight(sceneLight, 1);
+        render({ ...current, zones: [], light: sceneLight });
         publishStatus('fallback', 'Protected or black video cannot be sampled; using the app color.');
+      } else {
+        // A dark scene (or an opening black): keep the last colours and let the light fade out.
+        sceneLight = followLight(sceneLight, 0);
+        render({ ...current, zones: liveZones, dynamic: 'live', light: sceneLight });
+        if (everLive) publishStatus('live');
       }
-    } else {
+    } else if (next) {
       blackFrames = 0;
+      everLive = true;
       liveZones = next.map((zone, index) => {
         const previous = liveZones[index]?.color || zone.color;
         const previousRgb = rgb(previous), nextRgb = rgb(zone.color);
@@ -136,7 +154,8 @@ function sampleContinuousFrame(now, generation) {
         const response = distance > 72 ? .92 : nextPeak >= previousPeak ? .84 : .52;
         return { ...zone, color: mixHex(previous, zone.color, response) };
       });
-      render({ ...current, zones: liveZones, dynamic: 'live' });
+      sceneLight = followLight(sceneLight, lightTarget(sample.brightness));
+      render({ ...current, zones: liveZones, dynamic: 'live', light: sceneLight });
       publishStatus('live');
     }
   }
@@ -152,6 +171,7 @@ async function startCapture(sourceId, sourceError = '') {
   }
   if (!sourceId || (sourceId === captureSourceId && captureStream)) return;
   stopCapture();
+  sceneLight = 0; // start dark; the first lit frame brings the Halo up
   captureSourceId = sourceId;
   const generation = ++captureGeneration;
   try {
@@ -322,6 +342,9 @@ function render(state) {
   ctx.clearRect(0, 0, w, h);
 
   if (state.enabled) {
+    // 1 = full Halo; fades to 0 in dark scenes so the wall goes dark with the movie.
+    const light = state.light == null ? 1 : clamp(state.light, 0, 1);
+    if (light > .01) {
     const requested = Math.max(.04, Math.min(1, state.intensity || .35));
     // A perceptual floor makes low settings useful on a projection wall while
     // the slider still controls the full output range.
@@ -339,6 +362,15 @@ function render(state) {
     // The projector raster itself must disappear softly into the wall instead of
     // ending as a colored rectangle. All four masks reach true transparency.
     applyOuterFeather(points, w, h);
+
+    if (light < .995) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'destination-in';
+      ctx.fillStyle = `rgba(0,0,0,${light})`;
+      ctx.fillRect(0, 0, w, h);
+      ctx.restore();
+    }
+    }
 
     // Put an opaque black safety mask behind the coloured Halo. This guarantees
     // that a fixed-position site element or an ordinary Windows desktop cannot
@@ -399,7 +431,9 @@ function render(state) {
 }
 
 window.lumenHalo.onState(state => {
-  current = { ...state, zones: liveZones.length ? liveZones : state.zones };
+  // A different app means a different accent: forget what the last picture looked like.
+  if (state.color !== lastAccent) { lastAccent = state.color; everLive = false; blackFrames = 0; }
+  current = { ...state, zones: liveZones.length ? liveZones : state.zones, light: captureVideo ? sceneLight : 1 };
   render(current);
   if (!state.enabled) stopCapture();
   else startCapture(state.captureSourceId, state.captureError);
