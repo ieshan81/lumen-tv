@@ -48,12 +48,12 @@ function enhancedHex(red, green, blue) {
   const mean = (red + green + blue) / 3;
   // Projected overspill loses saturation and brightness on the wall. Calibrate
   // before temporal smoothing so dark but colorful edge detail stays visible.
-  const saturation = 1.6;
+  const saturation = 1.25;
   red = mean + (red - mean) * saturation;
   green = mean + (green - mean) * saturation;
   blue = mean + (blue - mean) * saturation;
   const peak = Math.max(red, green, blue);
-  const gain = peak > 0 ? clamp(232 / peak, 1, 2.4) : 1;
+  const gain = peak > 0 ? clamp(200 / peak, 1, 1.5) : 1;
   return `#${[red, green, blue].map(value => clamp(Math.round(value * gain), 0, 255).toString(16).padStart(2, '0')).join('')}`;
 }
 
@@ -132,11 +132,11 @@ function sampleContinuousFrame(now, generation) {
     if (sample && !next) {
       blackFrames++;
       if (!everLive && blackFrames >= FALLBACK_AFTER) {
-        // No picture was ever readable: protected video. Only then glow in the app colour.
+        // No picture was ever readable (protected video): there is nothing true to glow, so stay dark.
         liveZones = [];
-        sceneLight = followLight(sceneLight, 1);
+        sceneLight = followLight(sceneLight, 0);
         render({ ...current, zones: [], light: sceneLight });
-        publishStatus('fallback', 'Protected or black video cannot be sampled; using the app color.');
+        publishStatus('fallback', 'Protected or black video cannot be sampled; the Halo stays off.');
       } else {
         // A dark scene (or an opening black): keep the last colours and let the light fade out.
         sceneLight = followLight(sceneLight, 0);
@@ -151,7 +151,8 @@ function sampleContinuousFrame(now, generation) {
         const previousRgb = rgb(previous), nextRgb = rgb(zone.color);
         const previousPeak = Math.max(...previousRgb), nextPeak = Math.max(...nextRgb);
         const distance = Math.max(...nextRgb.map((value, channel) => Math.abs(value - previousRgb[channel])));
-        const response = distance > 72 ? .92 : nextPeak >= previousPeak ? .84 : .52;
+        // Slow, even easing so edge colours drift with the film instead of flashing with every frame.
+        const response = distance > 96 ? .4 : nextPeak >= previousPeak ? .2 : .1;
         return { ...zone, color: mixHex(previous, zone.color, response) };
       });
       sceneLight = followLight(sceneLight, lightTarget(sample.brightness));
@@ -241,9 +242,9 @@ function drawCapturedExtension(intensity, w, h) {
   textureContext.clearRect(0, 0, tw, th);
   const passes = [
     // At 480×270 these blur radii scale to roughly 190, 80 and 24 pixels on Y9.
-    { blur:48, saturation:1.85, brightness:2.05, alpha:.24 + intensity * .34 },
-    { blur:20, saturation:1.7, brightness:1.7, alpha:.30 + intensity * .42 },
-    { blur:6, saturation:1.45, brightness:1.35, alpha:.42 + intensity * .46 }
+    { blur:48, saturation:1.3, brightness:1.6, alpha:.24 + intensity * .34 },
+    { blur:20, saturation:1.25, brightness:1.4, alpha:.30 + intensity * .42 },
+    { blur:6, saturation:1.15, brightness:1.2, alpha:.42 + intensity * .46 }
   ];
   passes.forEach((pass, index) => {
     textureContext.globalCompositeOperation = index ? 'screen' : 'source-over';
@@ -343,7 +344,8 @@ function render(state) {
 
   if (state.enabled) {
     // 1 = full Halo; fades to 0 in dark scenes so the wall goes dark with the movie.
-    const light = state.light == null ? 1 : clamp(state.light, 0, 1);
+    // The app accent colour is never painted as a stand-in: with no real picture colours there is no Halo.
+    const light = state.zones?.length >= 12 ? (state.light == null ? 1 : clamp(state.light, 0, 1)) : 0;
     if (light > .01) {
     const requested = Math.max(.04, Math.min(1, state.intensity || .35));
     // A perceptual floor makes low settings useful on a projection wall while

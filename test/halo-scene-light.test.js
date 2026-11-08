@@ -81,12 +81,23 @@ test('a dim, noisy scene with a colour cast stays dark rather than glowing pink 
   assert.ok(halo.read('sceneLight') < .02);
 });
 
-test('protected video that never shows a picture still gets the app colour, after a few seconds', async () => {
+test('protected video that never shows a picture gets no Halo, never the app colour', async () => {
   const halo = await loadHalo();
   await halo.play(BLACK, lightApi.FALLBACK_AFTER - 10);
   assert.ok(!halo.statuses.some(status => status.status === 'fallback'), 'an opening black is not mistaken for protected video');
-  assert.ok(halo.read('sceneLight') < .02);
   await halo.play(BLACK, 80);
-  assert.ok(halo.statuses.some(status => status.status === 'fallback'));
-  assert.ok(halo.read('sceneLight') > .9, 'the app colour is shown for protected video');
+  assert.ok(halo.statuses.some(status => status.status === 'fallback'), 'the unreadable picture is reported');
+  assert.ok(halo.read('sceneLight') < .02, 'and the Halo stays off instead of glowing in the accent colour');
+  assert.equal(halo.drawn.stroke, 0, 'nothing is ever painted');
+});
+
+test('picture colours ease in gently so the Halo cannot flash with every frame', async () => {
+  const halo = await loadHalo();
+  await halo.play([200, 40, 40], 40);
+  const red = halo.read('liveZones[0].color');
+  await halo.play([40, 40, 200], 1);
+  const afterOneFrame = halo.read('liveZones[0].color');
+  assert.notEqual(afterOneFrame, red);
+  const channel = (hex, index) => parseInt(hex.slice(1 + index * 2, 3 + index * 2), 16);
+  assert.ok(channel(red, 0) - channel(afterOneFrame, 0) < (channel(red, 0) - 40) * .55, 'one frame moves less than half way to the new colour');
 });
