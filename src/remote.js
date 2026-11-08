@@ -51,6 +51,8 @@ class RemoteServer extends EventEmitter {
     this.token = token;
     this.discovery = discovery && !String(host).startsWith('127.');
     this.clients = new Set();
+    // Fingerprint of the phone page, so an already-open remote can tell when the laptop has a newer one.
+    this.buildId = crypto.createHash('sha1').update(['index.html', 'remote.css', 'remote.js', 'haptics.js'].map((name) => { try { return fs.readFileSync(path.join(ROOT, name)); } catch { return ''; } }).join('\0')).digest('hex').slice(0, 12);
     this.advertisedHost = '';
     this.starting = null;
     this.stopping = false;
@@ -99,7 +101,7 @@ class RemoteServer extends EventEmitter {
           return res.end();
         }
         // The home-screen shortcut must reopen with the token, so it is written into the page and manifest.
-        if (file[3]) body = Buffer.from(body.toString('utf8').split('__TOKEN__').join(encodeURIComponent(this.token)));
+        if (file[3]) body = Buffer.from(body.toString('utf8').split('__TOKEN__').join(encodeURIComponent(this.token)).split('__BUILD__').join(this.buildId));
         const headers = { 'content-type': file[1], 'cache-control': file[2] ? 'public, max-age=86400' : 'no-store', 'referrer-policy':'no-referrer', 'x-content-type-options':'nosniff' };
         if (how === 'query') {
           headers['set-cookie'] = `lumen=${encodeURIComponent(this.token)}; Path=/; Max-Age=31536000; SameSite=Strict; HttpOnly`;

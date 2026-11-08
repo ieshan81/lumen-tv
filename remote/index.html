@@ -1,6 +1,6 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no"><meta name="theme-color" content="#050810"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><link rel="manifest" href="/manifest.webmanifest?t=__TOKEN__"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><link rel="stylesheet" href="/remote.css?v=jarvis1"><title>Lumen Remote</title></head>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no"><meta name="theme-color" content="#050810"><meta name="lumen-build" content="__BUILD__"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><link rel="manifest" href="/manifest.webmanifest?t=__TOKEN__"><link rel="apple-touch-icon" href="/apple-touch-icon.png"><link rel="stylesheet" href="/remote.css?v=pad2"><title>Lumen Remote</title></head>
 <style>[hidden]{display:none!important}</style>
-<body>
+<body data-tab="control">
 <header><button id="home" class="brand" aria-label="Lumen home"><b>LUMEN</b></button><div id="connection"><i id="dot"></i><span id="connectionText">Connecting</span></div><button class="power-mini" data-ir-main="power" aria-label="Projector power">⏻</button></header>
 <div class="status-line" id="status">Connecting to Lumen…</div>
 <main>
@@ -16,8 +16,8 @@
     <section class="remote-card" id="remoteControls" hidden>
       <div class="remote-head"><span class="eyebrow" id="contextLabel">BROWSE YOUR TV</span><div id="padseg" class="segments"><button data-pad="auto">Auto</button><button data-pad="dpad">TV</button><button data-pad="touch">Touch</button><button data-pad="projector">Projector</button></div></div>
       <p id="controlHint" class="hint">Arrows to move · OK to open</p>
-      <div id="dpad" class="dpad"><button data-key="Up">↑</button><button data-key="Left">←</button><button data-key="Enter" class="ok">OK</button><button data-key="Right">→</button><button data-key="Down">↓</button></div>
-      <div id="touchpad" class="touchpad" hidden><span>Drag to point<br><small>Tap to click · two fingers to scroll</small></span></div>
+      <div class="pad-zone"><div id="dpad" class="dpad"><button data-key="Up">↑</button><button data-key="Left">←</button><button data-key="Enter" class="ok">OK</button><button data-key="Right">→</button><button data-key="Down">↓</button></div>
+      <div id="touchpad" class="touchpad" hidden><span>Drag to point<br><small>Tap to click · two fingers to scroll</small></span></div></div>
       <div class="quick-row"><button data-key="Back">‹ <span>Back</span></button><button id="homeButton">⌂ <span>Home</span></button><button data-media="fullscreen">⛶ <span>Full</span></button></div>
       <div class="transport" id="transport"><button data-media="back10">↶<small>10</small></button><button id="playPause" class="play" data-media="playpause"><svg id="playIcon" viewBox="0 0 24 24"><path d="M8 5.5 18 12 8 18.5z"/></svg><span class="sr-only" id="playLabel">Play</span></button><button data-media="fwd10">↷<small>10</small></button></div>
       <div class="episode-row" id="episodeRow" hidden><button data-site="previousEpisode">Previous episode</button><button data-site="nextEpisode">Next episode</button></div>
@@ -46,5 +46,5 @@
 </main>
 <nav><button class="on" data-tab="control"><b>◎</b><span>Remote</span></button><button data-tab="more"><b>☷</b><span>Room</span></button><button data-tab="apps" hidden aria-hidden="true"></button></nav>
 <div class="toast" id="toast"></div>
-<script src="/haptics.js?v=jarvis1"></script><script src="/remote.js?v=jarvis1"></script>
+<script src="/haptics.js?v=pad2"></script><script src="/remote.js?v=pad2"></script>
 </body></html>

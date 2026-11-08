@@ -178,6 +178,7 @@ async function viewState() {
 function remoteState(s) {
   return {
     t: 'state',
+    build: remote ? remote.buildId : '',
     mode: s.mode,
     tiles: s.tiles.map(({ id, name, accent }) => ({ id, name, accent, icon: `/tile-icon/${encodeURIComponent(id)}` })),
     running: s.running && { name: s.running.name, title: s.running.title, accent: s.running.accent, tileId: s.running.tileId, icon: s.running.tileId ? `/tile-icon/${encodeURIComponent(s.running.tileId)}` : '' },

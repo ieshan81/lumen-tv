@@ -26,6 +26,17 @@
   $('haloDot').closest('details')?.classList.add('halo-card');
 
   function connected() { return ws && ws.readyState === WebSocket.OPEN; }
+  // When the laptop runs a newer remote than this page was loaded with, reload so the phone updates itself.
+  function staleBuild(serverBuild) {
+    const mine = document.querySelector('meta[name="lumen-build"]')?.content;
+    if (!serverBuild || !mine || mine.startsWith('__') || serverBuild === mine) return false;
+    try {
+      if (Date.now() - Number(phoneStorage?.getItem('lumen-reloaded') || 0) < 15000) return false;
+      phoneStorage?.setItem('lumen-reloaded', String(Date.now()));
+    } catch { /* storage can be denied; reload once per page load below */ }
+    location.reload();
+    return true;
+  }
   function queueMessage(msg) {
     const now = Date.now();
     pendingMessages = pendingMessages.filter(item => item.expires > now);
@@ -88,7 +99,7 @@
       if (socket !== ws) return;
       let msg;
       try { msg = JSON.parse(event.data); } catch { return; }
-      if (msg.t === 'state') { state = msg; renderState(); }
+      if (msg.t === 'state') { if (staleBuild(msg.build)) return; state = msg; renderState(); }
       else if (msg.t === 'toast') toast(msg.text);
     };
   }
@@ -458,6 +469,7 @@
   function showTab(name) {
     $$('nav button').forEach((button) => button.classList.toggle('on', button.dataset.tab === name));
     $$('.tab').forEach((tab) => tab.classList.toggle('active', tab.id === `tab-${name}`));
+    document.body.dataset.tab = name;
     const main = document.querySelector('main');
     main.scrollTop = 0;
     document.scrollingElement.scrollTop = 0;

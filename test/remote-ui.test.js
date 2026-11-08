@@ -71,6 +71,15 @@ test('phone renders Movy, adaptive controls, typing and playback without narrow-
   await until(()=>['up','ok','back','home'].every(key=>messages.some(msg=>msg.t==='ir'&&msg.button===key)),'Projector D-pad did not map to IR controls');
   assert.equal(await browser.evaluate('document.querySelector("#remoteControls").dataset.padMode'),'projector');
   await browser.evaluate('document.querySelector("[data-pad=auto]").click()');
+  // The Remote tab is a fixed layout: neither the page nor the tab scrolls, and the pointer pad owns its gestures.
+  await browser.evaluate('document.querySelector("[data-tab=control]").click()');
+  for(const pad of ['dpad','touch']){
+    await browser.evaluate(`document.querySelector("[data-pad=${pad}]").click()`);
+    const layout=await browser.evaluate('(()=>{const tab=document.querySelector("#tab-control"),pad=document.querySelector(document.querySelector("#dpad").hidden?"#touchpad":"#dpad").getBoundingClientRect();return{pageScrolls:document.scrollingElement.scrollHeight>innerHeight+1,tabScrolls:tab.scrollHeight>tab.clientHeight+1,bodyOverflow:getComputedStyle(document.body).overflow,padWidth:Math.round(pad.width),padHeight:Math.round(pad.height),touchAction:getComputedStyle(document.querySelector("#touchpad")).touchAction}})()');
+    assert.deepEqual({pageScrolls:layout.pageScrolls,tabScrolls:layout.tabScrolls,bodyOverflow:layout.bodyOverflow,touchAction:layout.touchAction},{pageScrolls:false,tabScrolls:false,bodyOverflow:'hidden',touchAction:'none'},`${pad} pad layout ${JSON.stringify(layout)}`);
+    assert.ok(layout.padWidth>=120&&layout.padHeight>=120,`${pad} pad is usable: ${JSON.stringify(layout)}`);
+  }
+  await browser.evaluate('document.querySelector("[data-pad=auto]").click()');
   assert.equal(await browser.evaluate('document.querySelector("[data-site=nextEpisode]").hidden'),false);
   assert.equal(await browser.evaluate('document.querySelector("[data-site=previousEpisode]").hidden'),true);
   assert.equal(await browser.evaluate('document.querySelector("[data-site=audioSubtitles]").hidden'),false);
