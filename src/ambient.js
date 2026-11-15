@@ -53,7 +53,7 @@ class AmbientSampler extends EventEmitter{
       try{
         const image=await this.capture(this.display),next=sampleZones(image.bitmap,image.width,image.height,this.points);
         if(next){const changed=this.status!=='live';this.zones=next.map((zone,index)=>({...zone,color:mixHex(this.zones[index]?.color,zone.color)}));this.status='live';this.error='';this.emit('zones',this.zones);if(changed)this.emit('status',this.state());}
-        else{const message='Protected or black video cannot be sampled; using the app color.',changed=this.status!=='fallback'||this.error!==message;this.status='fallback';this.error=message;if(changed)this.emit('status',this.state());}
+        else{const message='Protected or black video cannot be sampled; the Halo stays off.',changed=this.status!=='fallback'||this.error!==message;this.status='fallback';this.error=message;if(changed)this.emit('status',this.state());}
       }catch(error){const message=String(error?.message||error),changed=this.status!=='fallback'||this.error!==message;this.status='fallback';this.error=message;if(changed)this.emit('status',this.state());}
       if(this.generation===generation)this.timer=setTimeout(tick,this.interval);
     };

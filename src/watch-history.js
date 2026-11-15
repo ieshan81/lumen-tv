@@ -120,7 +120,11 @@ class WatchHistory {
       .filter(item => { const show = showKey(item); if (seen.has(show)) return false; seen.add(show); return true; })
       .slice(0, limit);
   }
-  find(query) { return this.publicItems(40).map(item => ({ item, score: scoreTitle(query, item) })).sort((a, b) => b.score - a.score || b.item.updatedAt - a.item.updatedAt)[0]?.score >= 0.45 ? this.publicItems(40).map(item => ({ item, score: scoreTitle(query, item) })).sort((a, b) => b.score - a.score || b.item.updatedAt - a.item.updatedAt)[0].item : null; }
+  find(query) {
+    const best = this.publicItems(40).map(item => ({ item, score: scoreTitle(query, item) }))
+      .sort((a, b) => b.score - a.score || b.item.updatedAt - a.item.updatedAt)[0];
+    return best && best.score >= 0.45 ? best.item : null;
+  }
 }
 
 module.exports = { WatchHistory, parseMovyUrl, scoreTitle };

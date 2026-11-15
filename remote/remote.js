@@ -400,7 +400,7 @@
     (halo.points||[]).forEach((point,index)=>{$(`haloPoint${index}`).textContent=`${(point.x*100).toFixed(2).replace(/\.00$/,'')}%, ${(point.y*100).toFixed(2).replace(/\.00$/,'')}%`;});
     $$('[data-halo-point]').forEach(button=>button.classList.toggle('on',Number(button.dataset.haloPoint)===haloSelectedPoint));$('haloSelected').textContent=`Moving point ${haloSelectedPoint+1} · ${names[haloSelectedPoint]}`;
     $('haloDot').classList.toggle('ready',!!halo.enabled);$('haloGuide').textContent=halo.guide?'Finish corner setup':'Show corner guide';
-    const dynamic=halo.dynamic||{status:'off'};$('haloStatus').textContent=halo.error||(halo.guide?`Corner guide visible · point ${haloSelectedPoint+1} selected`:halo.enabled&&dynamic.status==='live'?'Dynamic picture colors live · fullscreen perspective fit active':halo.enabled&&dynamic.status==='starting'?'Starting dynamic picture sampling…':halo.enabled?`${dynamic.error||'Picture sampling unavailable'} · using app-color fallback`:'Halo is off. Your four corners are saved.');
+    const dynamic=halo.dynamic||{status:'off'};$('haloStatus').textContent=halo.error||(halo.guide?`Corner guide visible · point ${haloSelectedPoint+1} selected`:halo.enabled&&dynamic.status==='live'?'Picture colors live · the movie is fitted inside the four corners':halo.enabled&&dynamic.status==='starting'?'Starting picture sampling…':halo.enabled?`${dynamic.error||'Picture sampling unavailable'} · the glow stays off, the movie stays fitted`:'Halo is off. Your four corners are saved.');
   }
   function sendHalo(action){send({t:'halo',action,...haloDraft()});}
   const saveHalo=()=>{clearTimeout(haloPreviewTimer);sendHalo('save');};

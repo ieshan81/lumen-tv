@@ -2,16 +2,28 @@
 (() => {
   const $ = id => document.getElementById(id);
   let S = null, rows = [], focus = { r:0, c:0 }, focusKey = '', featureIndex = 0, lastInputAt = 0, pairing = false, signature = '', featureTakeover = false, activeFeature = null;
+  // Jarvis's answer bubble clears itself instead of sitting on the home screen until the next request.
+  const REPLY_MS = 12000;
+  let replyTimer = 0;
   const fallbackHero = { title:'Settle in.', overview:'Open an app or ask Jarvis what you feel like watching.', backdrop:'', mediaType:'Lumen', year:'', rating:0 };
 
   function appItem(tile) {
     return { key:`app:${tile.id}`, id:tile.id, type:'app', title:tile.name, subtitle:tile.desc, accent:tile.accent, image:tile.icon, mark:tile.id==='youtube'?'▶':tile.name.slice(0,1), activate:()=>lumen.launch(tile.id) };
   }
+  // "23 min left" says more on a TV than "37% watched"; fall back to the percentage when the length is unknown.
+  function timeLeft(item) {
+    const duration = Number(item.duration) || 0, position = Number(item.position) || 0;
+    if (duration > 0 && position >= 0 && position < duration) {
+      const minutes = Math.max(1, Math.round((duration - position) / 60));
+      return minutes >= 60 ? `${Math.floor(minutes / 60)} h ${minutes % 60} min left` : `${minutes} min left`;
+    }
+    return `${Math.round(Number(item.progress || 0) * 100)}% watched`;
+  }
   function contentItem(item, resume = false) {
     const progress = Number(item.progress || 0);
     return {
       key:`${resume?'history':'content'}:${item.key || item.ref}`, type:'content', title:item.series || item.title,
-      subtitle:resume ? `${item.season != null ? `S${item.season} · E${item.episode} · ` : ''}${Math.round(progress*100)}% watched` : [item.year,item.rating?`${Number(item.rating).toFixed(1)}/10`:''].filter(Boolean).join('  '),
+      subtitle:resume ? `${item.season != null ? `S${item.season} · E${item.episode} · ` : ''}${timeLeft(item)}` : [item.year,item.rating?`${Number(item.rating).toFixed(1)}/10`:''].filter(Boolean).join('  '),
       image:item.artwork || item.backdrop || item.poster, progress, accent:resume?'#36d9ff':'#ef3340', data:item,
       activate:()=>resume ? lumen.content(item.ref || '', { position:item.position || 0, url:item.url || '', title:item.series || item.title || '' }) : lumen.content(item.ref)
     };
@@ -49,7 +61,7 @@
   function key(k){lastInputAt=Date.now();if(pairing){if(['Esc','Back','Enter','Space'].includes(k))closePairing();return;}if(k==='Left')move(0,-1);else if(k==='Right')move(0,1);else if(k==='Up')move(-1,0);else if(k==='Down')move(1,0);else if(k==='Enter'||k==='Space')activate();else if(k==='Esc'||k==='Back'||k==='Backspace'){if(S?.running)lumen.action('resume');else openPairing();}}
   $('chip').addEventListener('click',openPairing);$('pairClose').addEventListener('click',closePairing);
   lumen.onNav(key);window.addEventListener('keydown',e=>{const map={ArrowLeft:'Left',ArrowRight:'Right',ArrowUp:'Up',ArrowDown:'Down',Enter:'Enter',' ':'Space',Escape:'Esc',Backspace:'Back'};if(map[e.key]){e.preventDefault();key(map[e.key]);}});
-  lumen.onState(state=>{S=state;applyProjectorLayout(state.halo);$('chip').classList.toggle('live',state.remote.clients>0);$('chipText').textContent=state.remote.clients>0?'REMOTE LINKED':'PAIR REMOTE';const a=state.assistant||{};$('jarvisText').textContent=a.status==='thinking'?'Thinking':a.voice?.armed?'Listening':a.voice?.listening?'Online':'Ready';$('jarvis').classList.toggle('listening',a.status==='thinking'||a.voice?.armed);$('jarvisReply').hidden=!a.message;$('jarvisReply').querySelector('p').textContent=a.message||'';const next=JSON.stringify({tiles:state.tiles,history:state.continueWatching,catalog:state.catalog?.featured,assistant:state.assistant?.items,running:state.running});if(next!==signature){signature=next;render();}if(pairing){$('qr').innerHTML=state.remote.qr||'';if(state.remote.clients>0)closePairing();}});
+  lumen.onState(state=>{S=state;applyProjectorLayout(state.halo);$('chip').classList.toggle('live',state.remote.clients>0);$('chipText').textContent=state.remote.clients>0?'REMOTE LINKED':'PAIR REMOTE';const a=state.assistant||{};$('jarvisText').textContent=a.status==='thinking'?'Thinking':a.voice?.armed?'Listening':a.voice?.listening?'Online':'Ready';$('jarvis').classList.toggle('listening',a.status==='thinking'||a.voice?.armed);const replyAge=Date.now()-(Number(a.updatedAt)||0),freshReply=!!a.message&&replyAge<REPLY_MS;$('jarvisReply').hidden=!freshReply;$('jarvisReply').querySelector('p').textContent=a.message||'';clearTimeout(replyTimer);if(freshReply)replyTimer=setTimeout(()=>{$('jarvisReply').hidden=true;},REPLY_MS-replyAge);const next=JSON.stringify({tiles:state.tiles,history:state.continueWatching,catalog:state.catalog?.featured,assistant:state.assistant?.items,running:state.running});if(next!==signature){signature=next;render();}if(pairing){$('qr').innerHTML=state.remote.qr||'';if(state.remote.clients>0)closePairing();}});
   lumen.onToast(text=>{const el=$('toast');el.textContent=text;el.classList.add('show');clearTimeout(el.timer);el.timer=setTimeout(()=>el.classList.remove('show'),4200);});
   function tick(){const now=new Date();$('time').textContent=now.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});$('date').textContent=now.toLocaleDateString([],{weekday:'short',month:'short',day:'numeric'}).toUpperCase();}tick();setInterval(tick,15000);
   setInterval(()=>{if(!S||Date.now()-lastInputAt<12000||!S.catalog?.featured?.length)return;featureIndex=(featureIndex+1)%S.catalog.featured.length;activeFeature=heroFor(null);featureTakeover=true;document.body.classList.add('spotlight-mode');rows.forEach(row=>row.items.forEach(item=>item.el.classList.remove('focused')));setHero(activeFeature,null);},9000);

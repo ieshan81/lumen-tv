@@ -15,7 +15,7 @@ function installTvShell(origins) {
     style.id = 'lumen-unified-shell';
     style.textContent = `
       html.lumen-tv{--tv-bg:#090b11;--tv-fg:#f4f5fa;--tv-muted:#a6adc1;--tv-accent:#a99bff;--tv-focus:#fff;--tv-safe:clamp(24px,3.5vw,64px);color-scheme:dark;scroll-padding:5vh}
-      html.lumen-tv body{font-family:Outfit,'Segoe UI',system-ui,sans-serif!important;background:var(--tv-bg);color:var(--tv-fg)}
+      html.lumen-tv body{font-family:Outfit,'Segoe UI',system-ui,sans-serif!important;background:var(--tv-bg);color:var(--tv-fg);scroll-padding:5vh}
       html.lumen-tv :is(.navbar,.watch-nav){border-bottom:1px solid #ffffff12;background:#090b11eb;backdrop-filter:blur(18px)}
       html.lumen-tv :is(button,.btn,a[role=button],input,select){border-radius:14px;min-height:48px}
       html.lumen-tv :is(a,button,input,select,textarea,[tabindex]):is(:focus,[data-lumen-focus="true"]){outline:3px solid white!important;outline-offset:5px;box-shadow:0 0 0 8px #a99bff35!important}

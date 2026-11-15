@@ -14,24 +14,7 @@ const { CONTEXT_JS, replaceFieldExpression } = require('./page-context');
 const { tvShellScript, usesTvShell } = require('./tv-shell');
 const { allowedOrigins, allowsNavigation } = require('./navigation-policy');
 const { SITE_ACTIONS,siteControlsExpression } = require('./site-controls');
-
-function projectorLayoutScript(layout){
-  const points=layout?.enabled&&Array.isArray(layout.points)?layout.points:null;
-  return `(() => {
-    const id='lumen-projector-layout', points=${JSON.stringify(points)};
-    if(!points){document.getElementById(id)?.remove();window.__lumenProjectorApply=null;return;}
-    const apply=()=>{
-      const w=Math.max(1,innerWidth),h=Math.max(1,innerHeight),p=points.map(v=>({x:v.x*w,y:v.y*h})),[p0,p1,p2,p3]=p;
-      const dx1=p1.x-p2.x,dx2=p3.x-p2.x,dx3=p0.x-p1.x+p2.x-p3.x,dy1=p1.y-p2.y,dy2=p3.y-p2.y,dy3=p0.y-p1.y+p2.y-p3.y,den=dx1*dy2-dx2*dy1;
-      if(Math.abs(den)<1e-8)return;
-      const g=(dx3*dy2-dx2*dy3)/den,hp=(dx1*dy3-dx3*dy1)/den,a=p1.x-p0.x+g*p1.x,b=p3.x-p0.x+hp*p3.x,c=p0.x,d=p1.y-p0.y+g*p1.y,e=p3.y-p0.y+hp*p3.y,f=p0.y;
-      const matrix=[a/w,d/w,0,g/w,b/h,e/h,0,hp/h,0,0,1,0,c,f,0,1].map(v=>Number(v.toFixed(10))).join(',');
-      const style=document.getElementById(id)||document.documentElement.appendChild(Object.assign(document.createElement('style'),{id}));
-      style.textContent='html{background:#000!important;overflow:hidden!important}body{width:100vw!important;height:100vh!important;max-width:100vw!important;max-height:100vh!important;margin:0!important;transform-origin:0 0!important;transform-box:border-box!important;transform:matrix3d('+matrix+')!important;overflow:clip!important;clip-path:inset(0)!important;contain:paint!important}';
-    };
-    window.__lumenProjectorApply=apply;if(!window.__lumenProjectorResize){window.__lumenProjectorResize=true;addEventListener('resize',()=>window.__lumenProjectorApply?.(),{passive:true});}apply();
-  })()`;
-}
+const { projectorLayoutScript, layoutBox } = require('./projector-layout');
 
 const TV_USER_AGENT =
   'Mozilla/5.0 (PlayStation; PlayStation 4/12.00) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Safari/605.1.15';
@@ -495,6 +478,7 @@ class TvBrowser extends EventEmitter {
 
   async _applyProjectorLayout(layout){
     this.projectorLayout=layout||null;
+    this._clampPointer(); // the frame may have moved under the virtual mouse
     if(!this.pageSession)return;
     if(this.layoutScriptId){await this.cdp.send('Page.removeScriptToEvaluateOnNewDocument',{identifier:this.layoutScriptId},this.pageSession).catch(()=>{});this.layoutScriptId=null;}
     const source=projectorLayoutScript(this.projectorLayout),result=await this.cdp.send('Page.addScriptToEvaluateOnNewDocument',{source},this.pageSession);
@@ -602,7 +586,22 @@ class TvBrowser extends EventEmitter {
     const v = m.cssVisualViewport || m.visualViewport || m.layoutViewport;
     this.view = { w: Math.round(v.clientWidth || v.width || 1280), h: Math.round(v.clientHeight || v.height || 720) };
     this.viewAt = Date.now();
-    if (!this.pointer) this.pointer = { x: this.view.w / 2, y: this.view.h / 2 };
+    const box = this._pointerBox();
+    if (!this.pointer) this.pointer = { x: (box.left + box.right) / 2, y: (box.top + box.bottom) / 2 };
+    this._clampPointer();
+  }
+
+  /** Where the virtual mouse may go: the whole page, or just the screen frame when the page is fitted into it. */
+  _pointerBox() {
+    const box = layoutBox(this.projectorLayout, this.view.w, this.view.h);
+    return { left: Math.ceil(box.left), top: Math.ceil(box.top), right: Math.floor(box.right) - 1, bottom: Math.floor(box.bottom) - 1 };
+  }
+
+  _clampPointer() {
+    if (!this.pointer || !this.view) return;
+    const box = this._pointerBox();
+    this.pointer.x = Math.min(Math.max(this.pointer.x, box.left), box.right);
+    this.pointer.y = Math.min(Math.max(this.pointer.y, box.top), box.bottom);
   }
 
   _drawPointer(down) {
@@ -627,8 +626,9 @@ class TvBrowser extends EventEmitter {
       const { dx, dy } = this._moveAcc;
       this._moveAcc = { dx: 0, dy: 0 };
       const p = this.pointer;
-      p.x = Math.min(Math.max(p.x + dx, 0), this.view.w - 1);
-      p.y = Math.min(Math.max(p.y + dy, 0), this.view.h - 1);
+      p.x += dx;
+      p.y += dy;
+      this._clampPointer();
       await this.cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: p.x, y: p.y, button: 'none', buttons: 0 }, this.pageSession);
       this._drawPointer(false);
     } catch {
@@ -641,7 +641,8 @@ class TvBrowser extends EventEmitter {
 
   async click(button = 'left', double = false) {
     if (!this.active) return;
-    if (!this.pointer) await this._viewport();
+    if (!this.pointer || !this.view) await this._viewport();
+    this._clampPointer();
     const p = this.pointer;
     const b = button === 'right' ? 'right' : 'left';
     const mouse = (type, clickCount) =>
@@ -658,7 +659,8 @@ class TvBrowser extends EventEmitter {
   /** Positive = scroll the page down. */
   async scroll(notches) {
     if (!this.active) return;
-    if (!this.pointer) await this._viewport();
+    if (!this.pointer || !this.view) await this._viewport();
+    this._clampPointer();
     const p = this.pointer;
     await this.cdp.send('Input.dispatchMouseEvent', { type: 'mouseWheel', x: p.x, y: p.y, deltaX: 0, deltaY: notches * 100 }, this.pageSession);
   }

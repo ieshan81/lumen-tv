@@ -42,8 +42,10 @@ test('movie art drives both the hero and its fireplace palette', () => {
   assert.match(source, /surface\.style\.transform=css/);
   assert.match(source, /\$\('chip'\)\.addEventListener\('click',openPairing\)/);
   assert.match(read('ui/halo.js'), /state\.maskOutside/);
-  assert.match(read('src/browser.js'), /clip-path:inset\(0\).*contain:paint/);
+  assert.match(read('src/projector-layout.js'), /clip-path:inset\(0\)/);
   assert.doesNotMatch(source, /jet-active|systemLine/);
+  assert.match(source, /min left/, 'Continue Watching says how much is left, not a bare percentage');
+  assert.match(source, /REPLY_MS-replyAge/, "Jarvis's answer bubble clears itself");
 
   const blue = new Uint8ClampedArray(8 * 4);
   const amber = new Uint8ClampedArray(8 * 4);

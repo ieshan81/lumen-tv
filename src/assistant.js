@@ -27,7 +27,8 @@ function parseIntent(raw) {
 }
 
 class AssistantEngine {
-  constructor({ catalog, history }) { this.catalog = catalog; this.history = history; }
+  // apps: the tiles Lumen actually has, so Jarvis never promises to open one that is not installed.
+  constructor({ catalog, history, apps = null }) { this.catalog = catalog; this.history = history; this.apps = apps; }
   async resolve(text) {
     const intent = parseIntent(text);
     if (intent.type === 'continue') {
@@ -41,9 +42,15 @@ class AssistantEngine {
     }
     if (intent.type === 'youtube') {
       const query = intent.query || 'latest videos';
-      return { intent, action: 'url', url: `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}&sp=CAI%253D`, tileId: 'youtube', message: `Here are the newest YouTube results for ${query}.` };
+      // The YouTube tile runs the TV layout, which shows a blank page for desktop search links.
+      return { intent, action: 'url', url: `https://www.youtube.com/tv#/search?q=${encodeURIComponent(query)}`, tileId: 'youtube', message: `Here are YouTube results for ${query}.` };
     }
-    if (intent.type === 'app') return { intent, action: 'app', tileId: intent.app, message: `Opening ${intent.app}.` };
+    if (intent.type === 'app') {
+      const apps = typeof this.apps === 'function' ? this.apps() : this.apps;
+      const tile = Array.isArray(apps) ? apps.find(item => item.id === intent.app) : { id: intent.app, name: intent.app };
+      if (!tile) return { intent, message: `${intent.app.charAt(0).toUpperCase()}${intent.app.slice(1)} isn't one of your Lumen apps yet.` };
+      return { intent, action: 'app', tileId: tile.id, message: `Opening ${tile.name || tile.id}.` };
+    }
     if (intent.type === 'search') {
       const items = await this.catalog.search(intent.query);
       return { intent, action: 'recommend', items, message: items.length ? `I found these matches.` : `I couldn't find that title.` };

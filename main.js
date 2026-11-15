@@ -1293,7 +1293,7 @@ app.whenReady().then(async () => {
   tiles = cfg.loadTiles();
   catalog = new Catalog({ root: cfg.ROOT });
   watchHistory = new WatchHistory({ root: cfg.ROOT });
-  assistant = new AssistantEngine({ catalog, history: watchHistory });
+  assistant = new AssistantEngine({ catalog, history: watchHistory, apps: () => tiles });
   jarvis = new JarvisListener({ root: cfg.ROOT, enabled: settings.assistant?.enabled !== false });
   volume=new VolumeMonitor();
   volumeOverlay=new VolumeOverlay({autoHide:settings.audio.volumeAutoHide !== false});

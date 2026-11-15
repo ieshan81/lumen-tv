@@ -92,5 +92,17 @@ test('Jarvis parses recommendation, YouTube and resume requests without an LLM',
   const assistant = new AssistantEngine({ catalog, history });
   assert.equal((await assistant.resolve('Yo Jarvis horror Indonesian')).action, 'recommend');
   assert.equal((await assistant.resolve('continue Family Guy')).action, 'resume');
-  assert.match((await assistant.resolve('did Mrwhosetheboss upload on YouTube')).url, /youtube\.com\/results/);
+  // The YouTube tile runs the TV layout, which renders a blank page for desktop /results links.
+  assert.equal((await assistant.resolve('did Mrwhosetheboss upload on YouTube')).url, 'https://www.youtube.com/tv#/search?q=Mrwhosetheboss');
+});
+
+test('Jarvis only opens apps that Lumen actually has', async () => {
+  const assistant = new AssistantEngine({ catalog:{}, history:{}, apps:() => [{ id:'peacock', name:'Peacock' }] });
+  const peacock = await assistant.resolve('Jarvis open Peacock');
+  assert.equal(peacock.action, 'app');
+  assert.equal(peacock.tileId, 'peacock');
+  assert.equal(peacock.message, 'Opening Peacock.');
+  const netflix = await assistant.resolve('Jarvis open Netflix');
+  assert.equal(netflix.action, undefined, 'nothing is launched');
+  assert.equal(netflix.message, "Netflix isn't one of your Lumen apps yet.");
 });
