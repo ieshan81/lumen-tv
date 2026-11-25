@@ -10,6 +10,7 @@ const http = require('node:http');
 const net = require('node:net');
 const { TvBrowser, findEdge } = require('../src/browser');
 const { layoutBox, projectorLayoutScript } = require('../src/projector-layout');
+const { PNG } = require('pngjs');
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 async function freePort() {
@@ -65,6 +66,18 @@ test('a fitted website stays inside the screen frame', { skip: !findEdge(), time
   await loaded();
   const view = await run('({ w: innerWidth, h: innerHeight })');
   const box = layoutBox(FRAME, view.w, view.h);
+  const pixel = async (x, y) => {
+    const shot = await browser.cdp.send('Page.captureScreenshot', { format: 'png' }, browser.pageSession);
+    const png = PNG.sync.read(Buffer.from(shot.data, 'base64'));
+    const index = (png.width * y + x) * 4;
+    return [png.data[index], png.data[index + 1], png.data[index + 2]];
+  };
+
+  await t.test('everything around the frame is black, so the Halo never blurs a white surround into its glow', async () => {
+    assert.deepEqual(await pixel(4, 4), [0, 0, 0]);
+    assert.deepEqual(await pixel(view.w - 4, view.h - 4), [0, 0, 0]);
+    assert.deepEqual(await pixel(Math.round(box.right - 8), Math.round(box.bottom - 8)), [255, 255, 255], 'a page without its own background stays readable inside the frame');
+  });
 
   await t.test('the page is warped onto the frame', async () => {
     const html = await run(rectOf('html'));
@@ -158,6 +171,7 @@ test('a fitted website stays inside the screen frame', { skip: !findEdge(), time
     const html = await run(rectOf('html'));
     // The window's own scrollbar is back, so the page is a scrollbar narrower than the viewport.
     assert.ok(html.left === 0 && html.top === 0 && view.w - html.right < 30, JSON.stringify(html));
+    assert.deepEqual(await pixel(view.w - 30, view.h - 4), [255, 255, 255], "the browser's normal page colour is back");
     await run('window.scrollTo(0, 240); 0');
     assert.equal(await run('document.body.scrollTop'), 0, 'the window scrolls natively again');
     assert.equal(await run('scrollY'), 240);

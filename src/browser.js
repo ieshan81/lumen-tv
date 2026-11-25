@@ -480,6 +480,9 @@ class TvBrowser extends EventEmitter {
     this.projectorLayout=layout||null;
     this._clampPointer(); // the frame may have moved under the virtual mouse
     if(!this.pageSession)return;
+    // A transformed <html> no longer spreads its black background across the window, so Edge's default white
+    // filled everything around the frame, and the Halo, which blurs a capture of the screen, glowed white.
+    await this.cdp.send('Emulation.setDefaultBackgroundColorOverride',this.projectorLayout?.enabled?{color:{r:0,g:0,b:0,a:1}}:{},this.pageSession).catch(()=>{});
     if(this.layoutScriptId){await this.cdp.send('Page.removeScriptToEvaluateOnNewDocument',{identifier:this.layoutScriptId},this.pageSession).catch(()=>{});this.layoutScriptId=null;}
     const source=projectorLayoutScript(this.projectorLayout),result=await this.cdp.send('Page.addScriptToEvaluateOnNewDocument',{source},this.pageSession);
     this.layoutScriptId=result.identifier;
