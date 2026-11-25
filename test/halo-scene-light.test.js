@@ -53,9 +53,9 @@ test('light follows scene brightness: quick to rise, off at dark', () => {
   assert.equal(lightApi.lightTarget(0), 0);
   assert.equal(lightApi.lightTarget(lightApi.DARK_FLOOR), 0);
   assert.equal(lightApi.lightTarget(lightApi.BRIGHT_FULL), 1);
-  assert.ok(lightApi.lightTarget(38) > .3 && lightApi.lightTarget(38) < .7);
+  assert.ok(lightApi.lightTarget(34) > .3 && lightApi.lightTarget(34) < .7);
   assert.ok(lightApi.followLight(0, 1) - 0 > 1 - lightApi.followLight(1, 0), 'rises faster than it falls');
-  assert.ok(lightApi.followLight(1, 0) > .8, 'falls gently, one step at a time');
+  assert.ok(lightApi.followLight(1, 0) > .6, 'falls smoothly, one step at a time');
 });
 
 test('a dark scene fades the Halo out instead of switching to the app colour', async () => {
@@ -91,7 +91,7 @@ test('protected video that never shows a picture gets no Halo, never the app col
   assert.equal(halo.drawn.stroke, 0, 'nothing is ever painted');
 });
 
-test('picture colours ease in gently so the Halo cannot flash with every frame', async () => {
+test('picture colours track cuts quickly without jumping fully in one frame', async () => {
   const halo = await loadHalo();
   await halo.play([200, 40, 40], 40);
   const red = halo.read('liveZones[0].color');
@@ -99,5 +99,6 @@ test('picture colours ease in gently so the Halo cannot flash with every frame',
   const afterOneFrame = halo.read('liveZones[0].color');
   assert.notEqual(afterOneFrame, red);
   const channel = (hex, index) => parseInt(hex.slice(1 + index * 2, 3 + index * 2), 16);
-  assert.ok(channel(red, 0) - channel(afterOneFrame, 0) < (channel(red, 0) - 40) * .55, 'one frame moves less than half way to the new colour');
+  assert.ok(channel(afterOneFrame, 2) > channel(red, 2), 'the new colour is visible immediately');
+  assert.ok(channel(afterOneFrame, 0) > 40, 'one frame does not jump completely to the new colour');
 });

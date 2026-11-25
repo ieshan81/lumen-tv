@@ -48,12 +48,12 @@ function enhancedHex(red, green, blue) {
   const mean = (red + green + blue) / 3;
   // Projected overspill loses saturation and brightness on the wall. Calibrate
   // before temporal smoothing so dark but colorful edge detail stays visible.
-  const saturation = 1.25;
+  const saturation = 1.4;
   red = mean + (red - mean) * saturation;
   green = mean + (green - mean) * saturation;
   blue = mean + (blue - mean) * saturation;
   const peak = Math.max(red, green, blue);
-  const gain = peak > 0 ? clamp(200 / peak, 1, 1.5) : 1;
+  const gain = peak > 0 ? clamp(220 / peak, 1, 1.9) : 1;
   return `#${[red, green, blue].map(value => clamp(Math.round(value * gain), 0, 255).toString(16).padStart(2, '0')).join('')}`;
 }
 
@@ -90,8 +90,13 @@ function sampleVideoZones() {
       zones.push({ edge, t, ...color });
     }
   }
-  const brightness = zones.reduce((sum, zone) => sum + zone.luma, 0) / zones.length;
   const lit = zones.filter(zone => zone.luma > 7);
+  const allBrightness = zones.reduce((sum, zone) => sum + zone.luma, 0) / zones.length;
+  // Player chrome and letterboxing often make the complete top and bottom edges black.
+  // Judge the scene from the readable edge zones while still penalising tiny isolated highlights.
+  const litBrightness = lit.length ? lit.reduce((sum, zone) => sum + zone.luma, 0) / lit.length : 0;
+  const coverage = clamp(lit.length / 18, .35, 1);
+  const brightness = Math.max(allBrightness, litBrightness * coverage);
   if (lit.length < 8 || lit.reduce((sum, zone) => sum + zone.luma, 0) / lit.length < 12) return { zones: null, brightness };
   return { brightness, zones: zones.map(zone => ({ edge: zone.edge, t: zone.t, color: enhancedHex(zone.red, zone.green, zone.blue) })) };
 }
@@ -151,8 +156,8 @@ function sampleContinuousFrame(now, generation) {
         const previousRgb = rgb(previous), nextRgb = rgb(zone.color);
         const previousPeak = Math.max(...previousRgb), nextPeak = Math.max(...nextRgb);
         const distance = Math.max(...nextRgb.map((value, channel) => Math.abs(value - previousRgb[channel])));
-        // Slow, even easing so edge colours drift with the film instead of flashing with every frame.
-        const response = distance > 96 ? .4 : nextPeak >= previousPeak ? .2 : .1;
+        // Fast enough to feel attached to the picture, with a softer release to avoid flicker.
+        const response = distance > 96 ? .86 : nextPeak >= previousPeak ? .58 : .34;
         return { ...zone, color: mixHex(previous, zone.color, response) };
       });
       sceneLight = followLight(sceneLight, lightTarget(sample.brightness));
@@ -242,9 +247,9 @@ function drawCapturedExtension(intensity, w, h) {
   textureContext.clearRect(0, 0, tw, th);
   const passes = [
     // At 480×270 these blur radii scale to roughly 190, 80 and 24 pixels on Y9.
-    { blur:48, saturation:1.3, brightness:1.6, alpha:.24 + intensity * .34 },
-    { blur:20, saturation:1.25, brightness:1.4, alpha:.30 + intensity * .42 },
-    { blur:6, saturation:1.15, brightness:1.2, alpha:.42 + intensity * .46 }
+    { blur:48, saturation:1.55, brightness:1.7, alpha:.24 + intensity * .34 },
+    { blur:20, saturation:1.45, brightness:1.5, alpha:.30 + intensity * .42 },
+    { blur:6, saturation:1.25, brightness:1.28, alpha:.42 + intensity * .46 }
   ];
   passes.forEach((pass, index) => {
     textureContext.globalCompositeOperation = index ? 'screen' : 'source-over';

@@ -2,8 +2,8 @@
 // How much light the Halo deserves for the scene on screen. Dark scenes get none,
 // so the wall goes dark with the movie instead of glowing a boosted noise colour.
 (function (root) {
-  const DARK_FLOOR = 16;   // average edge brightness (0-255) at or below which the Halo is fully off
-  const BRIGHT_FULL = 60;  // ...and at or above which it is fully on
+  const DARK_FLOOR = 16;   // suppress dim compression noise and colour casts
+  const BRIGHT_FULL = 52;  // normal movie highlights should reach full wall brightness
   const FALLBACK_AFTER = 150; // ~5 s of black with no picture ever seen: protected video, use the app colour
 
   function smoothstep(value, low, high) {
@@ -11,9 +11,9 @@
     return t * t * (3 - 2 * t);
   }
   const lightTarget = brightness => smoothstep(brightness, DARK_FLOOR, BRIGHT_FULL);
-  // Rise quickly on a bright cut, fade out gently when the scene goes dark.
+  // Follow scene cuts quickly without flashing on single-frame noise.
   function followLight(current, target) {
-    const next = current + (target - current) * (target > current ? .35 : .12);
+    const next = current + (target - current) * (target > current ? .68 : .28);
     return Math.abs(target - next) < .005 ? target : next;
   }
 
